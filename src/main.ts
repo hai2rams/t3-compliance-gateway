@@ -7,9 +7,21 @@ import {
   initializeComplianceSecrets,
   listComplianceConfigKeys,
 } from './t3/complianceSecrets.js';
+import { resolveSecretFromMaps } from './t3/resolveSecret.js';
+import {
+  evaluateDeterministicRules,
+  evaluateSemanticCompliance,
+} from './services/compliance.js';
+import { getAuditTelemetry, recordAuditTrace } from './services/telemetry.js';
 
 const InitializeBodySchema = z.object({
   entries: z.record(z.string(), z.string()).optional(),
+});
+
+const AuditBodySchema = z.object({
+  rawText: z.string(),
+  amount: z.number(),
+  currency: z.string().optional(),
 });
 
 const app = express();
@@ -23,6 +35,62 @@ function t3Config() {
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', service: 't3-compliance-gateway' });
+});
+
+/**
+ * Dual-layer compliance audit: deterministic pre-filter → T3-sealed Gemini semantic scan.
+ */
+app.post('/api/v1/audit', async (req, res) => {
+  const parsed = AuditBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({
+      error: 'Bad Request',
+      message: 'Invalid audit request payload',
+      details: parsed.error.flatten(),
+    });
+    return;
+  }
+
+  const { rawText, amount } = parsed.data;
+
+  const deterministic = evaluateDeterministicRules(rawText, amount);
+  if (deterministic) {
+    const trace = recordAuditTrace(rawText, amount, deterministic);
+    res.status(200).json({
+      decision: trace.passed ? 'APPROVED' : 'REJECTED',
+      ...trace,
+    });
+    return;
+  }
+
+  try {
+    const runtime = t3Config();
+    const { tenant } = await getT3Session(runtime.t3nApiKey, runtime.t3nEnvironment);
+    const geminiApiKey = await resolveSecretFromMaps(tenant, 'gemini_api_key');
+
+    const semantic = await evaluateSemanticCompliance(rawText, geminiApiKey);
+    const trace = recordAuditTrace(rawText, amount, semantic);
+
+    res.status(200).json({
+      decision: trace.passed ? 'APPROVED' : 'REJECTED',
+      ...trace,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    const failSecure = recordAuditTrace(rawText, amount, {
+      passed: false,
+      reasoning: `Fail-Secure Lock: Unable to reach Terminal 3 secrets context (${message}).`,
+      triggeredLayer: 'FAIL_SECURE',
+    });
+    res.status(200).json({
+      decision: 'REJECTED',
+      ...failSecure,
+    });
+  }
+});
+
+app.get('/api/v1/analytics', (_req, res) => {
+  res.json(getAuditTelemetry());
 });
 
 /**
