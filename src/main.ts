@@ -92,7 +92,7 @@ app.get('/api/v1/compliance/config/keys', async (_req, res) => {
 app.post('/api/v1/compliance/config/read-via-contract', async (req, res) => {
   const body = z
     .object({
-      functionName: z.string().default('get_compliance_snapshot'),
+      functionName: z.string().default('get-compliance-snapshot'),
       input: z.record(z.string(), z.unknown()).optional(),
     })
     .safeParse(req.body);
@@ -111,7 +111,7 @@ app.post('/api/v1/compliance/config/read-via-contract', async (req, res) => {
     const { tenant } = await getT3Session(runtime.t3nApiKey, runtime.t3nEnvironment);
 
     const result = await tenant.contracts.execute(runtime.t3nContractTail, {
-      version: 'latest',
+      version: runtime.t3nContractVersion,
       functionName: body.data.functionName,
       input: body.data.input ?? {},
     });

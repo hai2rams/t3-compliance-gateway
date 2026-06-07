@@ -44,19 +44,35 @@ curl http://localhost:8080/openapi.json -o docs/api/openapi.json
 
 Command Palette → **Reindex** (or restart Cursor) after adding/updating spec files.
 
-## Phase 2 — Build (later)
+## Phase 2 — TEE contract + registration
 
-Once `docs/api/` is populated, ask Cursor to:
+```bash
+# 1. Build WASM contract (requires Rust + wasm32-wasip2)
+npm run build:contract
 
-- generate typed client models from OpenAPI
-- add integration tests from `examples.md`
-- wire gateway calls into your app layer
+# 2. Register on T3N (writes T3N_CONTRACT_ID to .env)
+npm run register:contract
+
+# 3. Seal compliance keys into hardware-isolated secrets map
+npm run init:compliance
+
+# 4. Start gateway
+npm start
+```
+
+Invoke the contract snapshot:
+
+```bash
+curl -X POST http://localhost:3000/api/v1/compliance/config/read-via-contract \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
 
 ## Phase 3 — Scale (later)
 
+- typed client generation, integration tests, CI, deployment
 - env-based config, secrets, observability
 - CI validation against the OpenAPI spec
-- deployment and runbooks
 
 ## Quick start in Cursor
 

@@ -4,6 +4,7 @@ export type AppConfig = {
   t3nEnvironment: 'testnet' | 'production';
   t3nContractId: number;
   t3nContractTail: string;
+  t3nContractVersion: string;
   complianceDefaults: Record<string, string>;
 };
 
@@ -23,6 +24,7 @@ export function loadConfig(requireT3n = false): AppConfig {
       process.env.T3N_ENVIRONMENT === 'production' ? 'production' : 'testnet',
     t3nContractId: contractId,
     t3nContractTail: process.env.T3N_CONTRACT_TAIL?.trim() || 'compliance-gateway-v1',
+    t3nContractVersion: process.env.T3N_CONTRACT_VERSION?.trim() || '0.1.0',
     complianceDefaults: {
       compliance_policy_version: process.env.COMPLIANCE_POLICY_VERSION?.trim() || '1.0.0',
       compliance_region: process.env.COMPLIANCE_REGION?.trim() || 'us',

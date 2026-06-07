@@ -32,8 +32,23 @@ Base URL: `http://localhost:3000`
 
 See `.env.example` — requires `T3N_API_KEY`, `T3N_CONTRACT_ID`, and optional compliance defaults.
 
+## TEE contract (this repo)
+
+| Path | Purpose |
+|------|---------|
+| `contracts/compliance-gateway/` | Rust WASM contract |
+| `scripts/register-contract.ts` | Register contract → `T3N_CONTRACT_ID` |
+| `scripts/init-compliance.ts` | Seal keys into `z::<tenant>:secrets` |
+
+```bash
+npm run build:contract
+npm run register:contract
+npm run init:compliance
+```
+
 ## Source docs
 
-- [Set up dev env](https://docs.terminal3.io/developers/adk/get-started/prerequisites/set-up-dev-env.md)
+- [Write TEE contract](https://docs.terminal3.io/developers/adk/get-started/walkthrough/write-contract)
+- [Register TEE contract](https://docs.terminal3.io/developers/adk/get-started/walkthrough/register-contract)
 - [Create tenant KV maps](https://docs.terminal3.io/developers/adk/tips/create-kv-maps.md)
 - [Seed API key into secrets map](https://docs.terminal3.io/developers/adk/tips/seed-api-key.md)

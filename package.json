@@ -8,7 +8,10 @@
   },
   "scripts": {
     "start": "tsx src/main.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build:contract": "cargo build --manifest-path contracts/compliance-gateway/Cargo.toml --release --target wasm32-wasip2",
+    "register:contract": "tsx scripts/register-contract.ts",
+    "init:compliance": "tsx scripts/init-compliance.ts"
   },
   "keywords": [],
   "author": "",
