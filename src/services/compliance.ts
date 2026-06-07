@@ -37,9 +37,37 @@ export function evaluateDeterministicRules(text: string, amount: number): AuditR
   return null;
 }
 
+// 2.0/1.5 families were retired June 2026 — prefer current Flash tiers with free quota.
+const GEMINI_MODELS = [
+  'gemini-3.1-flash-lite',
+  'gemini-3.5-flash',
+  'gemini-2.5-flash',
+  'gemini-3-flash-preview',
+] as const;
+
+const SEMANTIC_AUDIT_PROMPT = (text: string) => `
+  You are an enterprise risk, compliance, and anti-bribery auditing model.
+  Analyze the following transaction ledger note submitted by an autonomous AI agent.
+  Detect any hidden intents of corruption, bribery, undeclared foreign allocations, policy evasion, or shell company laundering.
+
+  Transaction Text: "${text}"
+
+  Respond strictly in valid JSON format matching this schema:
+  {
+    "passed": boolean,
+    "reasoning": "A concise single-sentence summary explaining why the transaction was approved or flagged"
+  }
+`;
+
+function isRetryableModelError(message: string): boolean {
+  return /503|429|404|not found|high demand|unavailable|overloaded|rate limit|quota/i.test(
+    message,
+  );
+}
+
 /**
- * Layer 2: Gemini 2.5 Flash Semantic Filter
- * Catches deep linguistic bypasses and context tricks with a fail-secure fallback
+ * Layer 2: Gemini semantic filter with model fallback chain.
+ * Catches deep linguistic bypasses and context tricks with a fail-secure fallback.
  */
 export async function evaluateSemanticCompliance(
   text: string,
@@ -54,45 +82,40 @@ export async function evaluateSemanticCompliance(
     };
   }
 
-  try {
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
-      generationConfig: { responseMimeType: 'application/json' },
-    });
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const errors: string[] = [];
 
-    const prompt = `
-      You are an enterprise risk, compliance, and anti-bribery auditing model.
-      Analyze the following transaction ledger note submitted by an autonomous AI agent.
-      Detect any hidden intents of corruption, bribery, undeclared foreign allocations, policy evasion, or shell company laundering.
+  for (const modelName of GEMINI_MODELS) {
+    try {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        generationConfig: { responseMimeType: 'application/json' },
+      });
 
-      Transaction Text: "${text}"
+      const response = await model.generateContent(SEMANTIC_AUDIT_PROMPT(text));
+      const cleanJson = response.response.text().trim();
+      const result = JSON.parse(cleanJson) as { passed: boolean; reasoning: string };
 
-      Respond strictly in valid JSON format matching this schema:
-      {
-        "passed": boolean,
-        "reasoning": "A concise single-sentence summary explaining why the transaction was approved or flagged"
+      return {
+        passed: result.passed,
+        reasoning: result.reasoning,
+        triggeredLayer: 'SEMANTIC',
+      };
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      errors.push(`${modelName}: ${message}`);
+      console.error(`❌ Gemini model fault (${modelName}):`, message);
+
+      if (!isRetryableModelError(message)) {
+        break;
       }
-    `;
-
-    const response = await model.generateContent(prompt);
-    const cleanJson = response.response.text().trim();
-    const result = JSON.parse(cleanJson) as { passed: boolean; reasoning: string };
-
-    return {
-      passed: result.passed,
-      reasoning: result.reasoning,
-      triggeredLayer: 'SEMANTIC',
-    };
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error('❌ Gemini API Infrastructure Fault encountered:', message);
-
-    return {
-      passed: false,
-      reasoning:
-        'Fail-Secure Lock: High-fidelity AI auditing layer timed out or threw an infrastructure error. Transaction frozen out of caution.',
-      triggeredLayer: 'FAIL_SECURE',
-    };
+    }
   }
+
+  return {
+    passed: false,
+    reasoning:
+      'Fail-Secure Lock: High-fidelity AI auditing layer timed out or threw an infrastructure error. Transaction frozen out of caution.',
+    triggeredLayer: 'FAIL_SECURE',
+  };
 }
