@@ -1,0 +1,18 @@
+openapi: 3.0.3
+info:
+  title: T3 Compliance Gateway API
+  description: |
+    Placeholder spec — replace with the real OpenAPI document from the gateway.
+
+    Export options:
+    - curl https://<gateway-host>/openapi.json -o docs/api/openapi.json
+    - paste vendor-provided YAML/JSON here
+  version: 0.0.0
+
+servers:
+  - url: https://REPLACE_WITH_GATEWAY_HOST/v1
+    description: T3 Compliance Gateway
+
+paths: {}
+components:
+  securitySchemes: {}

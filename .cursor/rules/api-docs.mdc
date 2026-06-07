@@ -1,0 +1,24 @@
+---
+description: T3 Compliance Gateway API — use indexed docs before writing integration code
+globs: "**/*"
+alwaysApply: true
+---
+
+# T3 Compliance Gateway API context
+
+Before implementing or changing integration code:
+
+1. Read `docs/api/openapi.yaml` (or `openapi.json` if present).
+2. Read `docs/api/README.md` for auth, base URL, and flows.
+3. Prefer `docs/api/examples.md` for request/response shapes.
+
+## Conventions (when code is added later)
+
+- Do not invent endpoints or fields not in the OpenAPI spec.
+- Centralize base URL and auth in one config module.
+- Map API errors to typed application errors.
+- Add tests using payloads from `examples.md`.
+
+## Phase
+
+Project is in **docs-first** mode. Do not scaffold large app structure until API docs are populated.
