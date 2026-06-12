@@ -14,6 +14,9 @@ export const SensitiveDataTypeSchema = z.enum([
   'PHONE',
   'BANK_ACCOUNT',
   'CITIZEN_ID',
+  'PASSPORT_ID',
+  'FINANCIAL_DOCUMENT',
+  'CLAIM_DOCUMENT',
   'CONFIDENTIAL_KEYWORD',
 ]);
 
