@@ -18,7 +18,7 @@ export function loadConfig(requireT3n = false): AppConfig {
   const contractId = contractIdRaw ? Number(contractIdRaw) : NaN;
 
   return {
-    port: Number(process.env.PORT) || 3000,
+    port: Number(process.env.PORT) || 4000,
     t3nApiKey: apiKey,
     t3nEnvironment:
       process.env.T3N_ENVIRONMENT === 'production' ? 'production' : 'testnet',

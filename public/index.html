@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>T3 Compliance Gateway — Regulated AI Agents</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header>
+    <h1>T3 Compliance Gateway</h1>
+    <p class="subtitle">Regulated AI Agent Compliance — Hackathon Demo</p>
+  </header>
+
+  <main>
+    <section class="demo-buttons">
+      <h2>Sample scenarios</h2>
+      <div class="button-row">
+        <button data-scenario="finance-safe">Finance safe internal summary → ALLOW</button>
+        <button data-scenario="finance-pii">Finance external PII export → DENY</button>
+        <button data-scenario="gov-benefit">Government benefit eligibility → REVIEW</button>
+        <button data-scenario="procurement-high">Procurement high-value payment → DENY/REVIEW</button>
+      </div>
+    </section>
+
+    <section class="flow-pipeline">
+      <h2>Compliance pipeline</h2>
+      <div class="flow-steps" id="flow-steps">
+        <div class="flow-step" data-step="agent">Agent Request</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step" data-step="filter">Sensitive Data Filter</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step" data-step="policy">Policy Engine</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step" data-step="router">TokenRouter</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step" data-step="kimi">Kimi</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step" data-step="t3">Terminal 3</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step" data-step="audit">Audit Log</div>
+      </div>
+    </section>
+
+    <section class="result-panel" id="result-panel" hidden>
+      <h2>Compliance decision</h2>
+      <div class="result-grid">
+        <div class="result-card">
+          <span class="label">Decision</span>
+          <span class="value decision" id="out-decision">—</span>
+        </div>
+        <div class="result-card">
+          <span class="label">Risk score</span>
+          <span class="value" id="out-risk">—</span>
+        </div>
+        <div class="result-card">
+          <span class="label">Policy ID</span>
+          <span class="value" id="out-policy">—</span>
+        </div>
+        <div class="result-card wide">
+          <span class="label">Reasoning</span>
+          <span class="value" id="out-reasoning">—</span>
+        </div>
+        <div class="result-card">
+          <span class="label">Sensitive data</span>
+          <span class="value" id="out-sensitive">—</span>
+        </div>
+        <div class="result-card wide">
+          <span class="label">Redacted preview</span>
+          <pre class="value preview" id="out-preview">—</pre>
+        </div>
+        <div class="result-card">
+          <span class="label">TokenRouter route</span>
+          <span class="value" id="out-route">—</span>
+        </div>
+        <div class="result-card">
+          <span class="label">Kimi status</span>
+          <span class="value" id="out-kimi">—</span>
+        </div>
+        <div class="result-card">
+          <span class="label">Terminal 3 trust</span>
+          <span class="value" id="out-trust">—</span>
+        </div>
+        <div class="result-card">
+          <span class="label">Audit ID</span>
+          <span class="value mono" id="out-audit-id">—</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="audit-log-section">
+      <h2>Audit log</h2>
+      <table id="audit-table">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Use case</th>
+            <th>Agent</th>
+            <th>Decision</th>
+            <th>Risk</th>
+            <th>Policy</th>
+            <th>Route</th>
+          </tr>
+        </thead>
+        <tbody id="audit-tbody">
+          <tr><td colspan="7" class="empty">No checks yet — run a sample scenario.</td></tr>
+        </tbody>
+      </table>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>

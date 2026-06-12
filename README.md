@@ -63,7 +63,7 @@ npm start
 Invoke the contract snapshot:
 
 ```bash
-curl -X POST http://localhost:3000/api/v1/compliance/config/read-via-contract \
+curl -X POST http://localhost:4000/api/v1/compliance/config/read-via-contract \
   -H "Content-Type: application/json" \
   -d '{}'
 ```

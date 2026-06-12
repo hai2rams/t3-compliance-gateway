@@ -19,7 +19,7 @@ Indexed from [Terminal 3 ADK documentation](https://docs.terminal3.io/developers
 
 ## Local gateway (this repo)
 
-Base URL: `http://localhost:3000`
+Base URL: `http://localhost:4000`
 
 | Method | Path | Purpose |
 |--------|------|---------|

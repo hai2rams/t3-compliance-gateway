@@ -13,6 +13,12 @@ import {
   evaluateSemanticCompliance,
 } from './services/compliance.js';
 import { getAuditTelemetry, recordAuditTrace } from './services/telemetry.js';
+import { ComplianceCheckRequestSchema } from './schemas/complianceCheckSchema.js';
+import { runComplianceCheck } from './services/agentCompliance.js';
+import {
+  getComplianceAuditLog,
+  recordComplianceCheck,
+} from './services/auditLog.js';
 
 const InitializeBodySchema = z.object({
   entries: z.record(z.string(), z.string()).optional(),
@@ -26,6 +32,7 @@ const AuditBodySchema = z.object({
 
 const app = express();
 app.use(express.json());
+app.use(express.static('public'));
 
 const config = loadConfig();
 
@@ -91,6 +98,34 @@ app.post('/api/v1/audit', async (req, res) => {
 
 app.get('/api/v1/analytics', (_req, res) => {
   res.json(getAuditTelemetry());
+});
+
+/**
+ * Hackathon scaffold: regulated agent compliance check with sponsor-tool adapters.
+ */
+app.post('/api/v1/compliance/check', async (req, res) => {
+  const parsed = ComplianceCheckRequestSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({
+      error: 'Bad Request',
+      message: 'Invalid compliance check payload',
+      details: parsed.error.flatten(),
+    });
+    return;
+  }
+
+  try {
+    const response = await runComplianceCheck(parsed.data);
+    recordComplianceCheck(parsed.data, response);
+    res.status(200).json(response);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'ComplianceCheckFailed', message });
+  }
+});
+
+app.get('/api/v1/compliance/audit-log', (_req, res) => {
+  res.json(getComplianceAuditLog());
 });
 
 /**
