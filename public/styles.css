@@ -54,6 +54,26 @@ h2 {
   margin-bottom: 1rem;
 }
 
+h3.subheading {
+  font-size: 1rem;
+  color: var(--muted);
+  margin: 1.5rem 0 0.75rem;
+}
+
+.workflow-select select {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.65rem 1rem;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  min-width: 320px;
+}
+
+.runtime-grid {
+  margin-top: 0.5rem;
+}
+
 .button-row {
   display: flex;
   flex-wrap: wrap;
@@ -74,6 +94,83 @@ button {
 button:hover {
   border-color: var(--accent);
   background: #243044;
+}
+
+button.primary-btn {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  padding: 0.85rem 1.5rem;
+  margin-top: 0.75rem;
+}
+
+button.primary-btn:hover {
+  background: #2563eb;
+  border-color: #2563eb;
+}
+
+.request-form {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.request-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  flex: 1;
+  min-width: 160px;
+}
+
+.request-form label.full-width {
+  width: 100%;
+  margin-bottom: 0.75rem;
+}
+
+.request-form input[type="text"],
+.request-form input[type="number"],
+.request-form select,
+.request-form textarea {
+  background: #0f1419;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 0.5rem 0.65rem;
+  font-size: 0.9rem;
+  font-family: inherit;
+}
+
+.checkbox-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.checkbox-row label {
+  flex-direction: row;
+  align-items: center;
+  color: var(--text);
+  font-size: 0.85rem;
+  min-width: auto;
+}
+
+.form-status {
+  margin: 0.75rem 0 0;
+  font-size: 0.9rem;
+  color: var(--muted);
 }
 
 .flow-steps {

@@ -16,7 +16,16 @@ export async function runKimiReasoning(input: KimiInput): Promise<KimiReasoningR
     };
   }
 
-  const mockMode = process.env.MOCK_MODE === 'true' || !process.env.KIMI_API_KEY;
+  const apiKey = process.env.KIMI_API_KEY?.trim() ?? '';
+  const mockMode = process.env.MOCK_MODE === 'true' || !apiKey;
+
+  if (!apiKey && !mockMode) {
+    return {
+      provider: 'Kimi',
+      status: 'UNAVAILABLE',
+      summary: 'Kimi API key not configured.',
+    };
+  }
 
   if (mockMode) {
     const alignment =

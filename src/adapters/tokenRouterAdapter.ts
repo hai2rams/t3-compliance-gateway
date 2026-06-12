@@ -1,10 +1,16 @@
-import type { ComplianceDecision, RouteResult } from '../schemas/complianceCheckSchema.js';
+import type {
+  ComplianceDecision,
+  LlmProviderName,
+  RouteResult,
+  WorkflowType,
+} from '../schemas/complianceCheckSchema.js';
 
 export type TokenRouterInput = {
   decision: ComplianceDecision;
   riskScore: number;
   toolRequested: string;
   dataSensitivity: string;
+  workflowType?: WorkflowType;
 };
 
 export function routeModel(input: TokenRouterInput): RouteResult {
@@ -12,15 +18,18 @@ export function routeModel(input: TokenRouterInput): RouteResult {
     return {
       provider: 'TokenRouter',
       selectedModel: 'SKIP_LLM',
+      selectedLlmProvider: 'Mock',
       routeReason: 'Policy denied request; LLM inference skipped to prevent data leakage.',
     };
   }
 
-  if (input.decision === 'ALLOW' && input.riskScore < 30) {
+  const explicitProvider = process.env.LLM_PROVIDER?.trim().toLowerCase();
+  if (explicitProvider === 'gemini') {
     return {
       provider: 'TokenRouter',
-      selectedModel: 'FAST_MODEL',
-      routeReason: 'Low-risk approved action routed to fast compliance model.',
+      selectedModel: 'GEMINI',
+      selectedLlmProvider: 'Gemini',
+      routeReason: 'LLM_PROVIDER=gemini — routed to Gemini legacy provider.',
     };
   }
 
@@ -28,13 +37,29 @@ export function routeModel(input: TokenRouterInput): RouteResult {
     return {
       provider: 'TokenRouter',
       selectedModel: 'KIMI_STRONG_REVIEW',
-      routeReason: 'Elevated risk or REVIEW decision routed to strong reasoning model.',
+      selectedLlmProvider: 'Kimi',
+      routeReason: 'Elevated risk or REVIEW decision — Kimi strong-review (primary sponsor LLM).',
+    };
+  }
+
+  if (input.workflowType === 'VIDEO_ANALYSIS' && input.riskScore >= 35) {
+    return {
+      provider: 'TokenRouter',
+      selectedModel: 'SENSENOVA',
+      selectedLlmProvider: 'SenseNova',
+      routeReason:
+        'Video workflow with elevated risk — SenseNova vision reasoning selected as primary LLM.',
     };
   }
 
   return {
     provider: 'TokenRouter',
     selectedModel: 'KIMI',
-    routeReason: `Tool "${input.toolRequested}" routed to Kimi for semantic compliance check.`,
+    selectedLlmProvider: 'Kimi',
+    routeReason: `Tool "${input.toolRequested}" routed to Kimi (default hackathon reasoning provider).`,
   };
+}
+
+export function resolveLlmProviderFromRoute(route: RouteResult): LlmProviderName {
+  return route.selectedLlmProvider;
 }

@@ -1,8 +1,13 @@
 .DS_Store
 node_modules/
+
+# Local secrets — never commit (API keys live here only)
 .env
+.env.local
+.env.*.local
 .env.*
 !.env.example
+
 node_modules/
 dist/
 build/

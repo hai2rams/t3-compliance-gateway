@@ -56,9 +56,45 @@ npm run register:contract
 # 3. Seal compliance keys into hardware-isolated secrets map
 npm run init:compliance
 
-# 4. Start gateway
-npm start
+# 4. Start gateway (default port 4000 — use another port if 3000 is taken locally)
+cp .env.example .env
+PORT=4000 MOCK_MODE=true npm start
 ```
+
+Demo UI: http://localhost:4000/
+
+### Regulated AI workflows (`/api/v1/compliance/check`)
+
+All workflows pass through the same compliance gateway first:
+
+**Sensitive Data Filter → Policy Engine → Risk Scoring → TokenRouter → Kimi / SenseNova / Gemini → Terminal 3 → ALLOW / DENY / REVIEW → Runtime Router**
+
+| Workflow | `workflowType` | Runtime destination (when ALLOW) |
+|----------|----------------|----------------------------------|
+| Claims / Document Upload Review | `CLAIMS_REVIEW` | **Daytona** — `LIGHT_DOCUMENT_SANDBOX` |
+| Bulk Batch Job | `BULK_BATCH_JOB` | **Nosana** — `HEAVY_BATCH_GPU` |
+| Secure Video Analysis | `VIDEO_ANALYSIS` | **VideoDB** — `VIDEO_WORKFLOW` |
+
+- **DENY** → runtime `NONE` / `BLOCKED` (no execution)
+- **REVIEW** → runtime `NONE` / `AWAITING_APPROVAL` (human gate before execution)
+
+Finance, government, and procurement **use-case policies** remain unchanged.
+
+### TokenRouter vs Runtime Router
+
+- **TokenRouter** chooses the **LLM reasoning provider** only (not where jobs execute).
+- **Runtime Router** chooses where **approved** workloads execute (Daytona / Nosana / VideoDB).
+
+LLM provider order for `/api/v1/compliance/check`:
+
+1. **Kimi** — default primary sponsor LLM
+2. **SenseNova** — optional fallback (vision/video workloads)
+3. **Gemini** — legacy fallback (`LLM_PROVIDER=gemini` for explicit override)
+4. **Mock** — safe local fallback when no API keys are set
+
+The existing **`/api/v1/audit`** endpoint continues to use Gemini for its semantic layer.
+
+All LLM and runtime providers are behind adapters. Runtime adapters (Daytona, Nosana, VideoDB) run in **mock mode** by default (`MOCK_MODE=true`).
 
 Invoke the contract snapshot:
 

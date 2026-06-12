@@ -4,54 +4,68 @@ import type {
 } from '../schemas/complianceCheckSchema.js';
 import { verifyAgentTrust } from '../adapters/terminal3Adapter.js';
 import { routeModel } from '../adapters/tokenRouterAdapter.js';
-import { runKimiReasoning } from '../adapters/kimiAdapter.js';
-import { provisionSandbox } from '../adapters/daytonaAdapter.js';
-import { queueGpuJob } from '../adapters/nosanaAdapter.js';
+import { runLlmReasoning } from '../adapters/geminiAdapter.js';
 import { scanDocument } from '../adapters/senseNovaAdapter.js';
-import { indexAuditClip } from '../adapters/videoDbAdapter.js';
 import { scanSensitiveData } from './sensitiveDataFilter.js';
 import { calculateRiskScore } from './riskScoring.js';
 import { evaluatePolicy } from './policyEngine.js';
 import { createAuditId } from './auditLog.js';
+import { classifyWorkflow } from './workflowClassifier.js';
+import { routeRuntimeExecution } from './runtimeRouter.js';
 
 export async function runComplianceCheck(
   request: ComplianceCheckRequest,
 ): Promise<ComplianceCheckResponse> {
-  const sensitiveData = scanSensitiveData(request.content, request.containsPii);
-  const riskScore = calculateRiskScore(request, sensitiveData);
-  const policy = evaluatePolicy(request, riskScore, sensitiveData);
+  const workflow = classifyWorkflow(request);
+  const enrichedRequest: ComplianceCheckRequest = {
+    ...request,
+    workflowType: workflow.workflowType,
+  };
+
+  const sensitiveData = scanSensitiveData(enrichedRequest.content, enrichedRequest.containsPii);
+  const riskScore = calculateRiskScore(enrichedRequest, sensitiveData);
+  const policy = evaluatePolicy(enrichedRequest, riskScore, sensitiveData);
   const route = routeModel({
     decision: policy.decision,
     riskScore,
-    toolRequested: request.toolRequested,
-    dataSensitivity: request.dataSensitivity,
+    toolRequested: enrichedRequest.toolRequested,
+    dataSensitivity: enrichedRequest.dataSensitivity,
+    workflowType: workflow.workflowType,
   });
 
-  const [trust, kimi] = await Promise.all([
+  const [trust, llm] = await Promise.all([
     verifyAgentTrust({
-      agentId: request.agentId,
-      actionType: request.actionType,
-      purpose: request.purpose,
+      agentId: enrichedRequest.agentId,
+      actionType: enrichedRequest.actionType,
+      purpose: enrichedRequest.purpose,
     }),
-    runKimiReasoning({
-      content: request.content,
-      purpose: request.purpose,
+    runLlmReasoning({
+      content: enrichedRequest.content,
+      purpose: enrichedRequest.purpose,
       decision: policy.decision,
       route,
+      needsVideo: enrichedRequest.needsVideo,
     }),
   ]);
 
-  // Sponsor adapters invoked for audit trail (mock-safe)
-  provisionSandbox(request.agentId);
-  queueGpuJob(request.toolRequested);
-  scanDocument(request.content);
+  const { kimi, senseNova, gemini, llmProvider } = llm;
+
+  if (workflow.workflowType === 'CLAIMS_REVIEW') {
+    scanDocument(enrichedRequest.content);
+  }
 
   const auditId = createAuditId();
-  indexAuditClip(auditId);
 
   let reasoning = policy.reasoning;
+  if (workflow.hints.length) {
+    reasoning = `${reasoning} | Workflow: ${workflow.label} (${workflow.hints.join(', ')})`;
+  }
   if (kimi.status !== 'SKIPPED') {
-    reasoning = `${policy.reasoning} | Kimi: ${kimi.summary}`;
+    reasoning = `${reasoning} | Kimi: ${kimi.summary}`;
+  } else if (senseNova && senseNova.status !== 'SKIPPED' && senseNova.status !== 'UNAVAILABLE') {
+    reasoning = `${reasoning} | SenseNova: ${senseNova.summary}`;
+  } else if (gemini && gemini.status !== 'SKIPPED' && gemini.status !== 'UNAVAILABLE') {
+    reasoning = `${reasoning} | Gemini: ${gemini.summary}`;
   }
   if (trust.status === 'FAILED') {
     reasoning = `${reasoning} | Terminal 3 trust verification failed — escalated to REVIEW.`;
@@ -62,25 +76,39 @@ export async function runComplianceCheck(
     decision = 'REVIEW';
   }
 
+  const runtime = routeRuntimeExecution(
+    decision,
+    workflow.workflowType,
+    enrichedRequest,
+    auditId,
+  );
+
   const sponsorTools = [
     'Terminal3',
     'TokenRouter',
     'Kimi',
+    'SenseNova',
+    'Gemini',
     'Daytona',
     'Nosana',
-    'SenseNova',
     'VideoDB',
   ];
 
   return {
+    workflowType: workflow.workflowType,
+    workflowLabel: workflow.label,
     decision,
     riskScore,
     policyId: policy.policyId,
     reasoning,
     sensitiveData,
     route,
+    llmProvider,
     trust,
     kimi,
+    ...(senseNova ? { senseNova } : {}),
+    ...(gemini ? { gemini } : {}),
+    runtime,
     sponsorTools,
     auditId,
     timestamp: new Date().toISOString(),
