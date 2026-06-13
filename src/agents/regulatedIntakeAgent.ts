@@ -84,6 +84,12 @@ function detectModalities(
     modalities.delete('MIXED');
   }
 
+  if ((hints.hasVideo || modalities.has('VIDEO')) && !hints.hasImage) {
+    modalities.delete('IMAGE');
+    modalities.delete('DOCUMENT');
+    modalities.delete('MIXED');
+  }
+
   if (modalities.size > 2) modalities.add('MIXED');
 
   return [...modalities];
@@ -119,6 +125,9 @@ function formatDetectedModality(modalities: Modality[], intent: InferredIntent):
   if (intent === 'BATCH_RISK_SCAN') {
     return 'BATCH';
   }
+  if (intent === 'VIDEO_REVIEW') {
+    return 'VIDEO';
+  }
   return modalities.filter((m) => m !== 'MIXED').join(' + ');
 }
 
@@ -129,7 +138,7 @@ function mapWorkflow(intent: InferredIntent): string {
     case 'BATCH_RISK_SCAN':
       return 'BATCH_RISK_SCAN';
     case 'VIDEO_REVIEW':
-      return 'VIDEO_ANALYSIS';
+      return 'VIDEO_REVIEW';
     case 'CLAIMS_REVIEW':
       return 'CLAIMS_REVIEW';
     case 'VENDOR_ONBOARDING':
@@ -153,6 +162,12 @@ function detectPii(
     })
   ) {
     return false;
+  }
+
+  if (inferredIntent === 'VIDEO_REVIEW' || hints.hasVideo) {
+    return /\b(face|faces|customer faces|account context|private service|branch location|video may contain)\b/i.test(
+      content,
+    );
   }
 
   if (/\b(passport|salary|bank statement)\b/i.test(content)) {
@@ -193,6 +208,25 @@ export function buildAgentDataBoundary(
     context.selectedWorkflow === 'BATCH_RISK_SCAN' ||
     context.selectedWorkflow === 'BULK_BATCH_JOB';
 
+  const isVideoReview =
+    context.inferredIntent === 'VIDEO_REVIEW' ||
+    context.hasVideo === true ||
+    context.selectedWorkflow === 'VIDEO_REVIEW' ||
+    context.selectedWorkflow === 'VIDEO_ANALYSIS';
+
+  if (isVideoReview) {
+    if (
+      /\b(face|faces|customer faces|private service|spoken account|branch location|video may contain)\b/i.test(
+        content,
+      )
+    ) {
+      types.add('VIDEO_PRIVATE_CONTEXT');
+    }
+    if (/\baccount\s+context\b/i.test(content)) {
+      types.add('FINANCIAL_DOCUMENT');
+    }
+  }
+
   if (!isBatchRisk) {
     if (/\bsalary\s+slip\b/i.test(content)) types.add('SALARY_DOCUMENT');
     if (/\bbank\s+statement\b/i.test(content)) types.add('BANK_ACCOUNT');
@@ -206,6 +240,7 @@ export function buildAgentDataBoundary(
   }
 
   const ordered = [
+    'VIDEO_PRIVATE_CONTEXT',
     'PASSPORT_ID',
     'SALARY_DOCUMENT',
     'BANK_ACCOUNT',

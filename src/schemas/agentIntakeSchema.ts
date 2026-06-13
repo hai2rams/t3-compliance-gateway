@@ -241,6 +241,34 @@ export type NosanaExecution = {
   safetyNotes: string[];
 };
 
+export type VideoDbQueueStatus =
+  | 'SKIPPED'
+  | 'BLOCKED'
+  | 'QUEUED_MOCK'
+  | 'QUEUED_LIVE'
+  | 'AWAITING_GOVERNANCE_APPROVAL';
+
+export type VideoDbExecution = {
+  provider: 'VideoDB';
+  mode: 'LIVE' | 'MOCK';
+  allowedToQueue: boolean;
+  queueStatus: VideoDbQueueStatus;
+  jobClass: 'SECURE_VIDEO_REVIEW';
+  workflowType: 'VIDEO_AUDIO_ANALYSIS';
+  mediaPolicy: {
+    rawVideoAllowed: boolean;
+    frameExtractionAllowed: boolean;
+    audioTranscriptAllowed: boolean;
+    faceRecognitionAllowed: boolean;
+    externalSharingAllowed: boolean;
+    redactedTranscriptOnly: boolean;
+  };
+  plannedActions: string[];
+  artifacts: string[];
+  reason: string;
+  safetyNotes: string[];
+};
+
 export type AgentIntakeResponse = {
   missionId: string;
   agentId: string;
@@ -258,6 +286,7 @@ export type AgentIntakeResponse = {
   executionPlan: Record<string, unknown>;
   daytonaExecution: DaytonaExecution;
   nosanaExecution: NosanaExecution;
+  videoDbExecution: VideoDbExecution;
   toolOrchestration: ToolOrchestration;
   t3Governance: T3Governance;
   finalAgentState: FinalAgentState;

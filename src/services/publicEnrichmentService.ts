@@ -177,6 +177,13 @@ export function runPublicEnrichment(input: PublicEnrichmentInput): PublicEnrichm
     );
   }
 
+  if (input.inferredIntent === 'VIDEO_REVIEW') {
+    return skippedResult(
+      'BrightData/MCP skipped — secure video review does not require public web enrichment.',
+      input.dataBoundary,
+    );
+  }
+
   if (!input.enrichmentAllowed || !publicQuery) {
     return blockedResult(
       input.enrichmentBlockedReason ?? 'No safe public enrichment query available.',

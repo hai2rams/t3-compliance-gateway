@@ -53,10 +53,17 @@ const AGENT_SAMPLES = {
     label: 'Secure Video Review',
     request: {
       agentId: 'regulated-intake-agent',
-      goal: 'Analyze secure inspection video under governance controls.',
+      goal: 'Prepare a governed secure video review.',
       content:
-        'Inspection video may contain faces and location details for compliance review.',
-      hints: { hasVideo: true },
+        'Review uploaded customer service call video. The video may contain customer faces, spoken account context, branch location, and private service discussion. Generate a governed review summary and do not share raw media externally.',
+      hints: {
+        hasFile: true,
+        hasImage: false,
+        hasAudio: true,
+        hasVideo: true,
+        hasBatch: false,
+        needsPublicWeb: false,
+      },
     },
   },
   'prompt-injection': {
@@ -482,19 +489,62 @@ function resolveNosanaDisplay(data) {
   };
 }
 
-function setExecutionCardLayout(isNosana) {
+function setExecutionCardLayout(runtime) {
+  const isNosana = runtime === 'nosana';
+  const isVideoDb = runtime === 'videodb';
   document.querySelectorAll('.exec-daytona-only').forEach((el) => {
-    el.hidden = isNosana;
+    el.hidden = isNosana || isVideoDb;
   });
   document.querySelectorAll('.exec-nosana-only').forEach((el) => {
     el.hidden = !isNosana;
   });
-  document.getElementById('card-ex-status-label').textContent = isNosana
+  document.querySelectorAll('.exec-videodb-only').forEach((el) => {
+    el.hidden = !isVideoDb;
+  });
+  document.querySelectorAll('.exec-not-videodb').forEach((el) => {
+    el.hidden = isVideoDb;
+  });
+
+  document.getElementById('card-ex-status-label').textContent = isNosana || isVideoDb
     ? 'Queue status'
     : 'Dispatch status';
-  document.getElementById('card-ex-allowed-label').textContent = isNosana
+  document.getElementById('card-ex-allowed-label').textContent = isNosana || isVideoDb
     ? 'Allowed to queue'
     : 'Allowed to dispatch';
+  document.getElementById('card-ex-command-label').textContent = isVideoDb
+    ? 'Planned actions'
+    : 'Planned command';
+}
+
+function resolveVideoDbDisplay(data) {
+  const videoDb = data.videoDbExecution || {};
+  const exec = data.executionPlan || {};
+  const mediaPolicy = videoDb.mediaPolicy || exec.mediaPolicy || {};
+
+  return {
+    mode: videoDb.mode || exec.mode || 'MOCK',
+    queueStatus: videoDb.queueStatus || exec.queueStatus || exec.status || '—',
+    allowedToQueue: videoDb.allowedToQueue ?? exec.allowedToQueue,
+    jobClass: videoDb.jobClass || exec.jobClass || '—',
+    workflowType: videoDb.workflowType || exec.workflowType || '—',
+    mediaPolicy,
+    plannedActions: videoDb.plannedActions?.length
+      ? videoDb.plannedActions
+      : exec.plannedActions?.length
+        ? exec.plannedActions
+        : [],
+    artifacts: videoDb.artifacts?.length
+      ? videoDb.artifacts
+      : exec.artifacts?.length
+        ? exec.artifacts
+        : [],
+    safetyNotes: videoDb.safetyNotes?.length
+      ? videoDb.safetyNotes
+      : exec.safetyNotes?.length
+        ? exec.safetyNotes
+        : [],
+    reason: videoDb.reason || exec.reason || '—',
+  };
 }
 
 function renderSponsorCards(data) {
@@ -601,19 +651,70 @@ function renderSponsorCards(data) {
 
   const daytonaView = resolveDaytonaDisplay(data);
   const nosanaView = resolveNosanaDisplay(data);
+  const videoDbView = resolveVideoDbDisplay(data);
   const isNosanaRuntime =
     exec.targetRuntime === 'Nosana' || data.nosanaExecution?.provider === 'Nosana';
+  const isVideoDbRuntime =
+    exec.targetRuntime === 'VideoDB' || data.videoDbExecution?.provider === 'VideoDB';
   const isKycHold =
     data.inferredIntent === 'CREDIT_KYC_PRECHECK' &&
     data.finalAgentState === 'AUTO_HOLD_REVIEW_REQUIRED';
 
-  setExecutionCardLayout(isNosanaRuntime);
+  setExecutionCardLayout(
+    isVideoDbRuntime ? 'videodb' : isNosanaRuntime ? 'nosana' : 'daytona',
+  );
 
   document.getElementById('card-ex-runtime').textContent =
     exec.targetRuntime ||
-    (isNosanaRuntime ? 'Nosana' : data.daytonaExecution?.provider ? 'Daytona' : '—');
+    (isVideoDbRuntime
+      ? 'VideoDB'
+      : isNosanaRuntime
+        ? 'Nosana'
+        : data.daytonaExecution?.provider
+          ? 'Daytona'
+          : '—');
 
-  if (isNosanaRuntime) {
+  if (isVideoDbRuntime) {
+    document.getElementById('card-ex-mode').textContent = videoDbView.mode;
+    document.getElementById('card-ex-dispatch-status').textContent = videoDbView.queueStatus;
+    document.getElementById('card-ex-allowed').textContent = yesNoDisplay(
+      videoDbView.allowedToQueue,
+    );
+    document.getElementById('card-ex-jobclass').textContent = videoDbView.jobClass;
+    document.getElementById('card-ex-videodb-workflow').textContent = videoDbView.workflowType;
+    document.getElementById('card-ex-videodb-raw-video').textContent = yesNoDisplay(
+      videoDbView.mediaPolicy.rawVideoAllowed,
+    );
+    document.getElementById('card-ex-videodb-frames').textContent = yesNoDisplay(
+      videoDbView.mediaPolicy.frameExtractionAllowed,
+    );
+    document.getElementById('card-ex-videodb-audio').textContent = yesNoDisplay(
+      videoDbView.mediaPolicy.audioTranscriptAllowed,
+    );
+    document.getElementById('card-ex-videodb-faces').textContent = yesNoDisplay(
+      videoDbView.mediaPolicy.faceRecognitionAllowed,
+    );
+    document.getElementById('card-ex-videodb-external').textContent = yesNoDisplay(
+      videoDbView.mediaPolicy.externalSharingAllowed,
+    );
+    document.getElementById('card-ex-videodb-redacted').textContent = yesNoDisplay(
+      videoDbView.mediaPolicy.redactedTranscriptOnly,
+    );
+    document.getElementById('card-ex-command').textContent =
+      videoDbView.plannedActions.join(', ') || '—';
+    document.getElementById('card-ex-artifacts').textContent =
+      videoDbView.artifacts.join(', ') || '—';
+    document.getElementById('card-ex-safety').textContent =
+      videoDbView.safetyNotes.join(' | ') || '—';
+    document.getElementById('card-ex-plan').textContent = videoDbView.reason;
+    document.getElementById('card-ex-dispatch').textContent = exec.executed
+      ? exec.runtimeStatus || 'Queued'
+      : videoDbView.queueStatus === 'QUEUED_MOCK' || videoDbView.queueStatus === 'QUEUED_LIVE'
+        ? 'Governed video workflow planned'
+        : videoDbView.queueStatus === 'AWAITING_GOVERNANCE_APPROVAL'
+          ? 'Awaiting governance approval'
+          : 'Not queued';
+  } else if (isNosanaRuntime) {
     document.getElementById('card-ex-mode').textContent = nosanaView.mode;
     document.getElementById('card-ex-dispatch-status').textContent = nosanaView.queueStatus;
     document.getElementById('card-ex-allowed').textContent = yesNoDisplay(

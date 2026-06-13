@@ -194,6 +194,19 @@ The autonomous intake flow returns a structured `nosanaExecution` object from `s
 
 `executionPlan` aligns to `nosanaExecution` for batch cases (`targetRuntime: Nosana`, `GPU_BATCH_RISK_SCAN`, `batch-risk-scanner:latest`). Credit/KYC and claims workflows keep Nosana `SKIPPED` on the tool chain.
 
+## VideoDB secure video route
+
+The autonomous intake flow returns a structured `videoDbExecution` object from `src/services/videoDbExecutionPlanner.ts`:
+
+- **Video/audio workflow route** — VideoDB is the governed runtime for secure video review (`VIDEO_REVIEW`).
+- **Governance approval for sensitive media** — faces, spoken account context, or private service discussion set `AWAITING_GOVERNANCE_APPROVAL` and `AUTO_HOLD_REVIEW_REQUIRED`.
+- **No external raw media** — `rawVideoAllowed: false`, `externalSharingAllowed: false`, and `faceRecognitionAllowed: false` by default.
+- **Planned artifacts** — redacted transcript, keyframe manifest, review summary, and audit manifest only.
+- **Predefined actions only** — `extract_keyframes`, `generate_redacted_transcript`, `detect_sensitive_context`, `prepare_review_summary`; user content never becomes shell input.
+- **Mock-safe by default** — returns `mode: MOCK` when `VIDEODB_API_KEY` is missing or `MOCK_MODE=true`; live-ready with VideoDB credentials (`QUEUED_LIVE`).
+
+`executionPlan` aligns to `videoDbExecution` for video cases (`targetRuntime: VideoDB`, `SECURE_VIDEO_REVIEW`). Credit/KYC and batch workflows keep VideoDB `SKIPPED` on the tool chain.
+
 ## Security & governance notes
 
 - **Never commit** `.env`, `.env.local`, or API keys. Use `.env.example` placeholders only.

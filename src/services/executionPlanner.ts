@@ -43,11 +43,11 @@ export function planExecution(
     case 'VIDEO_ANALYSIS':
       return {
         targetRuntime: 'VideoDB',
-        executionMode: 'Video Workflow',
-        jobClass: 'VIDEO_WORKFLOW',
+        executionMode: 'Secure Video Workflow',
+        jobClass: 'SECURE_VIDEO_REVIEW',
         containerImage: null,
         status: finalState === 'EXECUTION_QUEUED' ? 'QUEUED_MOCK' : 'PLANNED',
-        reason: 'Approved video workflow can be processed by VideoDB.',
+        reason: 'Governed video/audio workflow can be processed by VideoDB.',
       };
     default:
       return {
@@ -72,6 +72,8 @@ function buildHoldPlan(intent: InferredIntent, workflow: WorkflowType): Executio
     reason:
       intent === 'CREDIT_KYC_PRECHECK'
         ? 'Sensitive KYC package requires governed review before execution.'
-        : 'Execution plan prepared — awaiting governance approval.',
+        : intent === 'VIDEO_REVIEW'
+          ? 'Sensitive video/audio context requires governed review before VideoDB workflow dispatch.'
+          : 'Execution plan prepared — awaiting governance approval.',
   };
 }

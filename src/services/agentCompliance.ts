@@ -29,6 +29,9 @@ export async function runComplianceCheck(
       hasBatch:
         enrichedRequest.jobMode === 'BATCH' ||
         enrichedRequest.workflowType === 'BULK_BATCH_JOB',
+      hasVideo:
+        enrichedRequest.needsVideo === true ||
+        enrichedRequest.workflowType === 'VIDEO_ANALYSIS',
       inferredIntent: enrichedRequest.actionType,
       selectedWorkflow: enrichedRequest.workflowType,
     },

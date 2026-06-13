@@ -4,6 +4,8 @@ import { scanSensitiveData } from './sensitiveDataFilter.js';
 
 export type AnonymizedBatchContext = {
   hasBatch?: boolean;
+  hasVideo?: boolean;
+  hasAudio?: boolean;
   inferredIntent?: InferredIntent | string;
   selectedWorkflow?: string;
 };
@@ -99,12 +101,20 @@ export function scanSensitiveDataForIntake(
   }
 
   const batchContext = isBatchContext(content, context);
+  const videoContext =
+    context.inferredIntent === 'VIDEO_REVIEW' ||
+    context.hasVideo === true ||
+    context.selectedWorkflow === 'VIDEO_REVIEW' ||
+    context.selectedWorkflow === 'VIDEO_ANALYSIS';
   const scanContent = batchContext ? maskNegatedAbsencePhrases(content) : content;
   const effectiveContainsPiiFlag =
-    batchContext && context.inferredIntent === 'BATCH_RISK_SCAN' ? false : containsPiiFlag;
+    (batchContext && context.inferredIntent === 'BATCH_RISK_SCAN') || videoContext
+      ? false
+      : containsPiiFlag;
 
   return scanSensitiveData(scanContent, effectiveContainsPiiFlag, {
     batchRiskScan: batchContext && context.inferredIntent === 'BATCH_RISK_SCAN',
+    videoWorkflowScan: videoContext,
   });
 }
 

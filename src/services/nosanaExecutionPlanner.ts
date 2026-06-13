@@ -1,11 +1,9 @@
 import type {
-  DaytonaExecution,
   FinalAgentState,
   InferredIntent,
   NosanaExecution,
   NosanaQueueStatus,
 } from '../schemas/agentIntakeSchema.js';
-import { buildExecutionPlanFromDaytonaExecution } from './daytonaExecutionPlanner.js';
 import type { ToolChainStatus } from '../config/toolCapabilityMap.js';
 import { isGlobalMockMode } from '../config/toolCapabilityMap.js';
 import { routeBatchCompute } from '../adapters/nosanaAdapter.js';
@@ -267,18 +265,6 @@ export function buildExecutionPlanFromNosanaExecution(
     reason: nosanaExecution.reason,
     status: nosanaExecution.queueStatus,
   };
-}
-
-export function alignExecutionPlanWithRuntime(
-  base: Record<string, unknown>,
-  daytonaExecution: DaytonaExecution,
-  nosanaExecution: NosanaExecution,
-): Record<string, unknown> {
-  const target = String(base.targetRuntime ?? 'NONE');
-  if (target === 'Nosana') {
-    return buildExecutionPlanFromNosanaExecution(nosanaExecution, base);
-  }
-  return buildExecutionPlanFromDaytonaExecution(daytonaExecution, base);
 }
 
 export function nosanaToolStatus(nosanaExecution: NosanaExecution): ToolChainStatus {

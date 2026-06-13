@@ -55,7 +55,7 @@ function sortTypes(types: Set<SensitiveDataType>): SensitiveDataType[] {
 export function scanSensitiveData(
   content: string,
   containsPiiFlag: boolean,
-  options: { batchRiskScan?: boolean } = {},
+  options: { batchRiskScan?: boolean; videoWorkflowScan?: boolean } = {},
 ): SensitiveDataResult {
   const types = new Set<SensitiveDataType>();
   let redactedPreview = content;
@@ -78,7 +78,7 @@ export function scanSensitiveData(
     redactedPreview = redactedPreview.replace(/\bpassport\b/gi, redactMatch('CONFIDENTIAL_KEYWORD'));
   }
 
-  if (containsPiiFlag && types.size === 0 && !options.batchRiskScan) {
+  if (containsPiiFlag && types.size === 0 && !options.batchRiskScan && !options.videoWorkflowScan) {
     types.add('CONFIDENTIAL_KEYWORD');
   }
 

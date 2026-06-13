@@ -33,9 +33,12 @@ import {
   buildDaytonaExecutionPlan,
 } from '../services/daytonaExecutionPlanner.js';
 import {
-  alignExecutionPlanWithRuntime,
   buildNosanaExecutionPlan,
 } from '../services/nosanaExecutionPlanner.js';
+import {
+  alignExecutionPlanWithRuntime,
+  buildVideoDbExecutionPlan,
+} from '../services/videoDbExecutionPlanner.js';
 import {
   buildTokenRouterDecisionFromModelRouting,
   routeModelForAgentTask,
@@ -123,6 +126,8 @@ async function buildBlockedResponse(
 ): Promise<AgentIntakeResponse> {
   const dataBoundary = buildAgentDataBoundary(request.content, {
     hasBatch: request.hints?.hasBatch,
+    hasVideo: request.hints?.hasVideo,
+    hasAudio: request.hints?.hasAudio,
     inferredIntent: intake.inferredIntent,
     selectedWorkflow: intake.selectedWorkflow,
   });
@@ -218,6 +223,23 @@ async function buildBlockedResponse(
     intentControlBlocked: Boolean(options.intentControlBlocked),
   });
 
+  const videoDbExecution = buildVideoDbExecutionPlan({
+    missionId,
+    agentId: request.agentId,
+    inferredIntent: intake.inferredIntent,
+    selectedWorkflow: intake.selectedWorkflow,
+    finalAgentState: 'AUTO_BLOCKED_BY_POLICY',
+    dataBoundary,
+    sensitiveDataDetected: dataBoundary.detected,
+    detectedSensitiveTypes: dataBoundary.types,
+    hasVideo: Boolean(request.hints?.hasVideo) || intake.modalities.includes('VIDEO'),
+    hasAudio: Boolean(request.hints?.hasAudio) || intake.modalities.includes('AUDIO'),
+    policyId,
+    executionPlan: blockedExecutionBase,
+    promptInjectionBlocked: Boolean(options.promptInjectionBlocked),
+    intentControlBlocked: Boolean(options.intentControlBlocked),
+  });
+
   const toolOrchestration = orchestrateBlockedTools(missionId, {
     intent: intake.inferredIntent,
     modalities: intake.modalities,
@@ -233,6 +255,7 @@ async function buildBlockedResponse(
     publicEnrichment,
     daytonaExecution,
     nosanaExecution,
+    videoDbExecution,
     t3Governance,
   });
 
@@ -264,9 +287,11 @@ async function buildBlockedResponse(
       blockedExecutionBase,
       daytonaExecution,
       nosanaExecution,
+      videoDbExecution,
     ),
     daytonaExecution,
     nosanaExecution,
+    videoDbExecution,
     toolOrchestration,
     t3Governance,
     finalAgentState: 'AUTO_BLOCKED_BY_POLICY',
@@ -361,6 +386,8 @@ export async function runAgentIntake(request: AgentIntakeRequest): Promise<Agent
 
   const dataBoundary = buildAgentDataBoundary(request.content, {
     hasBatch: request.hints?.hasBatch,
+    hasVideo: request.hints?.hasVideo,
+    hasAudio: request.hints?.hasAudio,
     inferredIntent: intake.inferredIntent,
     selectedWorkflow: intake.selectedWorkflow,
   });
@@ -507,10 +534,26 @@ export async function runAgentIntake(request: AgentIntakeRequest): Promise<Agent
     executionPlan: executionPlanPayload,
   });
 
+  const videoDbExecution = buildVideoDbExecutionPlan({
+    missionId,
+    agentId: request.agentId,
+    inferredIntent: intake.inferredIntent,
+    selectedWorkflow: intake.selectedWorkflow,
+    finalAgentState: judge.verdict,
+    dataBoundary,
+    sensitiveDataDetected: dataBoundary.detected,
+    detectedSensitiveTypes: dataBoundary.types,
+    hasVideo: Boolean(request.hints?.hasVideo) || intake.modalities.includes('VIDEO'),
+    hasAudio: Boolean(request.hints?.hasAudio) || intake.modalities.includes('AUDIO'),
+    policyId: compliance.policyId,
+    executionPlan: executionPlanPayload,
+  });
+
   const executionPlanFinal = alignExecutionPlanWithRuntime(
     executionPlanPayload,
     daytonaExecution,
     nosanaExecution,
+    videoDbExecution,
   );
 
   const publicEnrichment = runPublicEnrichment({
@@ -561,6 +604,7 @@ export async function runAgentIntake(request: AgentIntakeRequest): Promise<Agent
     t3Governance,
     daytonaExecution,
     nosanaExecution,
+    videoDbExecution,
   });
 
   trace.add(
@@ -612,6 +656,7 @@ export async function runAgentIntake(request: AgentIntakeRequest): Promise<Agent
     executionPlan: executionPlanFinal,
     daytonaExecution,
     nosanaExecution,
+    videoDbExecution,
     toolOrchestration,
     t3Governance,
     finalAgentState: judge.verdict,

@@ -4,7 +4,7 @@ import type { TokenRouterAgentDecision } from '../agents/tokenRouterAgent.js';
 import type { LlmJudgeResult } from '../agents/llmJudgeAgent.js';
 import type { ExecutionSpec } from '../execution/executionSpec.js';
 import type { RuntimeExecutionResult } from '../execution/executionSpec.js';
-import type { PublicEnrichment, ModelRouting, DaytonaExecution, NosanaExecution } from '../schemas/agentIntakeSchema.js';
+import type { PublicEnrichment, ModelRouting, DaytonaExecution, NosanaExecution, VideoDbExecution } from '../schemas/agentIntakeSchema.js';
 import {
   daytonaToolReason,
   daytonaToolStatus,
@@ -13,6 +13,10 @@ import {
   nosanaToolReason,
   nosanaToolStatus,
 } from '../services/nosanaExecutionPlanner.js';
+import {
+  videoDbToolReason,
+  videoDbToolStatus,
+} from '../services/videoDbExecutionPlanner.js';
 import {
   brightDataToolReason,
   brightDataToolStatus,
@@ -58,6 +62,7 @@ export type ToolDecisionInput = {
   modelRouting?: ModelRouting;
   daytonaExecution?: DaytonaExecution;
   nosanaExecution?: NosanaExecution;
+  videoDbExecution?: VideoDbExecution;
   kimiStatus?: string;
   senseNovaStatus?: string;
   judge: LlmJudgeResult | { verdict: FinalAgentState; summary: string };
@@ -515,6 +520,15 @@ function resolveNosana(input: ToolDecisionInput): ToolChainEntry {
 }
 
 function resolveVideoDb(input: ToolDecisionInput): ToolChainEntry {
+  if (input.videoDbExecution) {
+    return {
+      tool: 'VideoDB',
+      role: 'video_audio_workflow',
+      status: videoDbToolStatus(input.videoDbExecution),
+      reason: videoDbToolReason(input.videoDbExecution),
+    };
+  }
+
   if (input.promptInjectionBlocked || input.intentControlBlocked) {
     return {
       tool: 'VideoDB',
@@ -529,7 +543,7 @@ function resolveVideoDb(input: ToolDecisionInput): ToolChainEntry {
       tool: 'VideoDB',
       role: 'video_audio_workflow',
       status: 'SKIPPED',
-      reason: 'VideoDB skipped — no secure video or audio workflow detected.',
+      reason: 'VideoDB skipped because this is not a video/audio workflow.',
     };
   }
 

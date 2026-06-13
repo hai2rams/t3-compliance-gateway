@@ -27,6 +27,7 @@ export function isPolicyBlocked(riskScore: number, policyDecision: string, inten
   if (policyDecision === 'DENY') return true;
   if (intent === 'CREDIT_KYC_PRECHECK' || intent === 'VENDOR_ONBOARDING') return false;
   if (intent === 'BATCH_RISK_SCAN' && policyDecision === 'ALLOW') return false;
+  if (intent === 'VIDEO_REVIEW' && policyDecision !== 'DENY') return false;
   if (riskScore >= RISK_POLICY.autoBlockAboveRiskScore) return true;
   return false;
 }
