@@ -167,6 +167,43 @@ export type ModelRouting = {
   routeReason: string;
 };
 
+export type DaytonaDispatchStatus =
+  | 'NOT_DISPATCHED'
+  | 'AWAITING_GOVERNANCE_APPROVAL'
+  | 'QUEUED_MOCK'
+  | 'QUEUED_LIVE'
+  | 'BLOCKED';
+
+export type DaytonaExecution = {
+  provider: 'Daytona';
+  mode: 'LIVE' | 'MOCK';
+  allowedToDispatch: boolean;
+  dispatchStatus: DaytonaDispatchStatus;
+  executionMode: string;
+  jobClass: string;
+  containerImage: string;
+  workspace: {
+    type: 'STATEFUL_SANDBOX' | 'EPHEMERAL_SANDBOX';
+    persistence: 'STATEFUL' | 'EPHEMERAL';
+    ttlMinutes: number;
+  };
+  inputPolicy: {
+    rawSensitiveDataAllowed: boolean;
+    redactedInputOnly: boolean;
+    externalNetwork: 'DISABLED_BY_DEFAULT' | 'ALLOWED';
+    secretsInjected: boolean;
+  };
+  resourceLimits: {
+    cpu: string;
+    memory: string;
+    timeoutSeconds: number;
+  };
+  plannedCommand: string;
+  artifacts: string[];
+  reason: string;
+  safetyNotes: string[];
+};
+
 export type AgentIntakeResponse = {
   missionId: string;
   agentId: string;
@@ -182,6 +219,7 @@ export type AgentIntakeResponse = {
   publicEnrichment: PublicEnrichment;
   llmJudge: Record<string, unknown>;
   executionPlan: Record<string, unknown>;
+  daytonaExecution: DaytonaExecution;
   toolOrchestration: ToolOrchestration;
   t3Governance: T3Governance;
   finalAgentState: FinalAgentState;

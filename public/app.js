@@ -87,6 +87,10 @@ const developerPayload = document.getElementById('developer-payload');
 
 let lastAutopilotRequest = null;
 let lastAutopilotResponse = null;
+let activeAgentHints = null;
+
+const AUTOPILOT_ERROR_MSG =
+  'Autopilot failed. Check backend logs or developer console.';
 
 function setAutopilotStatus(message) {
   autopilotStatus.textContent = message;
@@ -99,6 +103,7 @@ function loadAgentSample(key) {
   agentGoal.value = sample.request.goal;
   agentContent.value = sample.request.content;
   uploadZone.classList.add('loaded');
+  activeAgentHints = sample.request.hints ? { ...sample.request.hints } : null;
   setAutopilotStatus(`${sample.label} loaded. Click Run Autopilot.`);
 }
 
@@ -120,6 +125,10 @@ function buildAgentIntakePayload() {
   if (/\bbatch\b/i.test(text)) hints.hasBatch = true;
   if (/\b(employer|company name|public web|registry|vendor)\b/i.test(text)) {
     hints.needsPublicWeb = true;
+  }
+
+  if (activeAgentHints) {
+    Object.assign(hints, activeAgentHints);
   }
 
   return {
@@ -207,7 +216,7 @@ function renderOutcome(data) {
   document.getElementById('out-exec-mode').textContent = exec.executionMode || '—';
   document.getElementById('out-container').textContent = exec.containerImage || '—';
 
-  let execStatus = exec.status || '—';
+  let execStatus = data.daytonaExecution?.dispatchStatus || exec.dispatchStatus || exec.status || '—';
   if (finalState === 'AUTO_HOLD_REVIEW_REQUIRED' && execStatus === 'AWAITING_GOVERNANCE_APPROVAL') {
     execStatus = 'AWAITING_GOVERNANCE_APPROVAL (HOLD)';
   }
@@ -367,6 +376,72 @@ function inferPrivacyBoundary(route, data) {
   return 'NO_PRIVATE_DATA_TO_EXTERNAL_MODEL';
 }
 
+const KYC_DAYTONA_FALLBACK = {
+  mode: 'MOCK',
+  allowedToDispatch: false,
+  dispatchStatus: 'AWAITING_GOVERNANCE_APPROVAL',
+  containerImage: 'kyc-document-validator:latest',
+  workspace: { persistence: 'STATEFUL', ttlMinutes: 30 },
+  inputPolicy: {
+    rawSensitiveDataAllowed: false,
+    redactedInputOnly: true,
+    externalNetwork: 'DISABLED_BY_DEFAULT',
+  },
+  plannedCommand: 'validate-kyc-package --input redacted_case.json',
+  artifacts: ['validation_report.json', 'redaction_summary.json', 'audit_manifest.json'],
+  safetyNotes: [
+    'No raw sensitive KYC data is passed to the sandbox.',
+    'Only redacted input is eligible for runtime execution.',
+    'External network access is disabled by default.',
+    'Execution is held until governance approval.',
+  ],
+  reason:
+    'Sensitive regulated package requires governance approval before Daytona sandbox execution.',
+};
+
+function yesNoDisplay(value, fallback = '—') {
+  if (value === true) return 'Yes';
+  if (value === false) return 'No';
+  return fallback;
+}
+
+function resolveDaytonaDisplay(data) {
+  const daytona = data.daytonaExecution || {};
+  const exec = data.executionPlan || {};
+  const useKycFallback =
+    data.inferredIntent === 'CREDIT_KYC_PRECHECK' &&
+    (data.finalAgentState === 'AUTO_HOLD_REVIEW_REQUIRED' ||
+      exec.status === 'AWAITING_GOVERNANCE_APPROVAL' ||
+      daytona.dispatchStatus === 'AWAITING_GOVERNANCE_APPROVAL');
+  const fb = useKycFallback ? KYC_DAYTONA_FALLBACK : {};
+
+  const workspace = daytona.workspace || exec.workspace || fb.workspace || {};
+  const inputPolicy = daytona.inputPolicy || exec.inputPolicy || fb.inputPolicy || {};
+
+  return {
+    mode: daytona.mode || exec.mode || fb.mode || 'MOCK',
+    dispatchStatus:
+      daytona.dispatchStatus || exec.dispatchStatus || exec.status || fb.dispatchStatus || '—',
+    allowedToDispatch:
+      daytona.allowedToDispatch ?? exec.allowedToDispatch ?? fb.allowedToDispatch,
+    containerImage: daytona.containerImage || exec.containerImage || fb.containerImage || '—',
+    workspace,
+    inputPolicy,
+    plannedCommand: daytona.plannedCommand || exec.plannedCommand || fb.plannedCommand || '—',
+    artifacts: daytona.artifacts?.length
+      ? daytona.artifacts
+      : exec.artifacts?.length
+        ? exec.artifacts
+        : fb.artifacts || [],
+    safetyNotes: daytona.safetyNotes?.length
+      ? daytona.safetyNotes
+      : exec.safetyNotes?.length
+        ? exec.safetyNotes
+        : fb.safetyNotes || [],
+    reason: daytona.reason || exec.reason || fb.reason || '—',
+  };
+}
+
 function renderSponsorCards(data) {
   sponsorRow.hidden = false;
 
@@ -469,12 +544,46 @@ function renderSponsorCards(data) {
         .join(' | ')
     : '—';
 
-  document.getElementById('card-ex-runtime').textContent = exec.targetRuntime || '—';
-  document.getElementById('card-ex-jobclass').textContent = exec.jobClass || '—';
-  document.getElementById('card-ex-plan').textContent = exec.reason || '—';
+  const daytonaView = resolveDaytonaDisplay(data);
+  const isKycHold =
+    data.inferredIntent === 'CREDIT_KYC_PRECHECK' &&
+    data.finalAgentState === 'AUTO_HOLD_REVIEW_REQUIRED';
+
+  document.getElementById('card-ex-runtime').textContent =
+    exec.targetRuntime || (data.daytonaExecution?.provider ? 'Daytona' : '—');
+  document.getElementById('card-ex-mode').textContent = daytonaView.mode;
+  document.getElementById('card-ex-dispatch-status').textContent = daytonaView.dispatchStatus;
+  document.getElementById('card-ex-allowed').textContent = yesNoDisplay(
+    daytonaView.allowedToDispatch,
+  );
+  document.getElementById('card-ex-jobclass').textContent =
+    data.daytonaExecution?.jobClass || exec.jobClass || '—';
+  document.getElementById('card-ex-container').textContent = daytonaView.containerImage;
+  document.getElementById('card-ex-persistence').textContent =
+    daytonaView.workspace.persistence || (isKycHold ? 'STATEFUL' : '—');
+  document.getElementById('card-ex-ttl').textContent =
+    daytonaView.workspace.ttlMinutes ?? (isKycHold ? 30 : '—');
+  document.getElementById('card-ex-raw-data').textContent = yesNoDisplay(
+    daytonaView.inputPolicy.rawSensitiveDataAllowed,
+    isKycHold ? 'No' : '—',
+  );
+  document.getElementById('card-ex-redacted').textContent = yesNoDisplay(
+    daytonaView.inputPolicy.redactedInputOnly,
+    isKycHold ? 'Yes' : '—',
+  );
+  document.getElementById('card-ex-network').textContent =
+    daytonaView.inputPolicy.externalNetwork || (isKycHold ? 'DISABLED_BY_DEFAULT' : '—');
+  document.getElementById('card-ex-command').textContent = daytonaView.plannedCommand;
+  document.getElementById('card-ex-artifacts').textContent =
+    daytonaView.artifacts.join(', ') || '—';
+  document.getElementById('card-ex-safety').textContent =
+    daytonaView.safetyNotes.join(' | ') || '—';
+  document.getElementById('card-ex-plan').textContent = daytonaView.reason;
   document.getElementById('card-ex-dispatch').textContent = exec.executed
     ? exec.runtimeStatus || 'Dispatched'
-    : 'Not dispatched (governed hold)';
+    : daytonaView.dispatchStatus === 'AWAITING_GOVERNANCE_APPROVAL'
+      ? 'Awaiting governance approval'
+      : 'Not dispatched (governed hold)';
 
   document.getElementById('card-audit-mission').textContent = data.missionId || '—';
   document.getElementById('card-audit-policy').textContent = parsePolicyFromTrace(data.agentTrace);
@@ -503,6 +612,13 @@ function animateTraceLoading() {
     </div>`;
 }
 
+function renderAutopilotResults(data) {
+  renderTrace(data.agentTrace || []);
+  renderOutcome(data);
+  renderSponsorCards(data);
+  renderDeveloperPayload();
+}
+
 async function runAutopilot() {
   const payload = buildAgentIntakePayload();
   if (!payload) {
@@ -525,24 +641,40 @@ async function runAutopilot() {
       body: JSON.stringify(payload),
     });
 
-    const data = await res.json();
+    let data;
+    try {
+      data = await res.json();
+    } catch (parseErr) {
+      console.error('Autopilot response parse failed:', parseErr);
+      setAutopilotStatus(AUTOPILOT_ERROR_MSG);
+      traceTimeline.innerHTML = `<p class="empty-state error">${AUTOPILOT_ERROR_MSG}</p>`;
+      return;
+    }
+
     lastAutopilotResponse = data;
 
     if (!res.ok) {
-      setAutopilotStatus(data.message || 'Autopilot intake failed.');
-      traceTimeline.innerHTML = `<p class="empty-state error">${data.message || 'Request failed.'}</p>`;
+      console.error('Autopilot intake failed:', res.status, data);
+      setAutopilotStatus(AUTOPILOT_ERROR_MSG);
+      traceTimeline.innerHTML = `<p class="empty-state error">${AUTOPILOT_ERROR_MSG}</p>`;
       renderDeveloperPayload();
       return;
     }
 
-    renderTrace(data.agentTrace);
-    renderOutcome(data);
-    renderSponsorCards(data);
-    renderDeveloperPayload();
+    try {
+      renderAutopilotResults(data);
+    } catch (renderErr) {
+      console.error('Autopilot UI render failed:', renderErr);
+      setAutopilotStatus(AUTOPILOT_ERROR_MSG);
+      traceTimeline.innerHTML = `<p class="empty-state error">${AUTOPILOT_ERROR_MSG}</p>`;
+      return;
+    }
+
     setAutopilotStatus(`Autopilot complete — ${data.finalAgentState}.`);
   } catch (err) {
-    setAutopilotStatus('Network error — is the gateway running?');
-    traceTimeline.innerHTML = '<p class="empty-state error">Could not reach /api/v1/agent/intake.</p>';
+    console.error('Autopilot request failed:', err);
+    setAutopilotStatus(AUTOPILOT_ERROR_MSG);
+    traceTimeline.innerHTML = `<p class="empty-state error">${AUTOPILOT_ERROR_MSG}</p>`;
   }
 }
 
@@ -568,7 +700,7 @@ document.querySelectorAll('[data-agent-sample]').forEach((btn) => {
   btn.addEventListener('click', () => loadAgentSample(btn.dataset.agentSample));
 });
 
-document.getElementById('runAutopilot').addEventListener('click', runAutopilot);
+document.getElementById('runAutopilot')?.addEventListener('click', runAutopilot);
 
 /* ─── Manual compliance debug console (legacy) ─── */
 const SCENARIOS = {

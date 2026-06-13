@@ -30,6 +30,10 @@ import {
   evaluateAgentGovernance,
 } from '../services/t3GovernanceService.js';
 import {
+  buildDaytonaExecutionPlan,
+  buildExecutionPlanFromDaytonaExecution,
+} from '../services/daytonaExecutionPlanner.js';
+import {
   buildTokenRouterDecisionFromModelRouting,
   routeModelForAgentTask,
 } from '../services/modelRoutingService.js';
@@ -171,6 +175,23 @@ async function buildBlockedResponse(
 
   const tokenRouterDecision = buildTokenRouterDecisionFromModelRouting(modelRouting);
 
+  const blockedExecutionBase = { status: 'NOT_PLANNED', targetRuntime: 'NONE' };
+  const daytonaExecution = buildDaytonaExecutionPlan({
+    missionId,
+    agentId: request.agentId,
+    inferredIntent: intake.inferredIntent,
+    selectedWorkflow: intake.selectedWorkflow,
+    finalAgentState: 'AUTO_BLOCKED_BY_POLICY',
+    t3Governance,
+    dataBoundary,
+    sensitiveDataDetected: dataBoundary.detected,
+    detectedSensitiveTypes: dataBoundary.types,
+    executionPlan: blockedExecutionBase,
+    policyId,
+    promptInjectionBlocked: Boolean(options.promptInjectionBlocked),
+    intentControlBlocked: Boolean(options.intentControlBlocked),
+  });
+
   const toolOrchestration = orchestrateBlockedTools(missionId, {
     intent: intake.inferredIntent,
     modalities: intake.modalities,
@@ -184,6 +205,7 @@ async function buildBlockedResponse(
     enrichmentAllowed: false,
     publicSearchQuery: '',
     publicEnrichment,
+    daytonaExecution,
     t3Governance,
   });
 
@@ -211,7 +233,8 @@ async function buildBlockedResponse(
     enrichmentPlan: buildEnrichmentPlanFromPublicEnrichment(publicEnrichment),
     publicEnrichment,
     llmJudge: { verdict: 'AUTO_BLOCKED_BY_POLICY', summary: reason },
-    executionPlan: { status: 'NOT_PLANNED', targetRuntime: 'NONE' },
+    executionPlan: buildExecutionPlanFromDaytonaExecution(daytonaExecution, blockedExecutionBase),
+    daytonaExecution,
     toolOrchestration,
     t3Governance,
     finalAgentState: 'AUTO_BLOCKED_BY_POLICY',
@@ -418,6 +441,25 @@ export async function runAgentIntake(request: AgentIntakeRequest): Promise<Agent
     t3Governance.auditSummary,
   );
 
+  const daytonaExecution = buildDaytonaExecutionPlan({
+    missionId,
+    agentId: request.agentId,
+    inferredIntent: intake.inferredIntent,
+    selectedWorkflow: intake.selectedWorkflow,
+    finalAgentState: judge.verdict,
+    t3Governance,
+    dataBoundary,
+    sensitiveDataDetected: dataBoundary.detected,
+    detectedSensitiveTypes: dataBoundary.types,
+    executionPlan: executionPlanPayload,
+    policyId: compliance.policyId,
+  });
+
+  const executionPlanFinal = buildExecutionPlanFromDaytonaExecution(
+    daytonaExecution,
+    executionPlanPayload,
+  );
+
   const publicEnrichment = runPublicEnrichment({
     missionId,
     agentId: request.agentId,
@@ -464,6 +506,7 @@ export async function runAgentIntake(request: AgentIntakeRequest): Promise<Agent
     executionSpec,
     runtime,
     t3Governance,
+    daytonaExecution,
   });
 
   trace.add(
@@ -512,7 +555,8 @@ export async function runAgentIntake(request: AgentIntakeRequest): Promise<Agent
       kimiStatus: compliance.kimi.status,
       senseNovaStatus: compliance.senseNova?.status,
     },
-    executionPlan: executionPlanPayload,
+    executionPlan: executionPlanFinal,
+    daytonaExecution,
     toolOrchestration,
     t3Governance,
     finalAgentState: judge.verdict,

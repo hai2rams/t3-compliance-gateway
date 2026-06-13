@@ -170,6 +170,18 @@ The autonomous intake flow returns a structured `modelRouting` object from `src/
 
 `tokenRouterDecision` remains backward compatible (`route`, `primaryProvider`, `secondaryProviders`) and is sourced from `modelRouting`. The agentic tool chain TokenRouter, Kimi, and SenseNova cards reflect `USED` (LIVE) or `MOCKED` (mock-safe).
 
+## Daytona execution hardening
+
+The autonomous intake flow returns a structured `daytonaExecution` object from `src/services/daytonaExecutionPlanner.ts`:
+
+- **Docker/sandbox layer** — Daytona is the governed execution plan for document and KYC workloads.
+- **Plan-only by default** — the agent prepares sandbox metadata but does not dispatch unless governance allows (`EXECUTION_QUEUED` / `AUTO_EXECUTION_APPROVED`).
+- **Redacted input only** — sensitive workflows set `rawSensitiveDataAllowed: false` and `redactedInputOnly: true`.
+- **No arbitrary commands** — only predefined `plannedCommand` values from an internal whitelist; user content never becomes shell input.
+- **Mock-safe by default** — returns `mode: MOCK` and `QUEUED_MOCK` / `AWAITING_GOVERNANCE_APPROVAL` when `DAYTONA_API_KEY` is missing or `MOCK_MODE=true`; live-ready when credentials are configured.
+
+`executionPlan` is aligned to `daytonaExecution` (`provider`, `dispatchStatus`, `inputPolicy`, `artifacts`, `safetyNotes`). The agentic tool chain Daytona card reflects `PLANNED` (awaiting governance), `MOCKED`/`USED` (queued), `BLOCKED`, or `SKIPPED`.
+
 ## Security & governance notes
 
 - **Never commit** `.env`, `.env.local`, or API keys. Use `.env.example` placeholders only.

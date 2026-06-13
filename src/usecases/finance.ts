@@ -23,7 +23,7 @@ export function evaluateFinancePolicy(
       decision: 'REVIEW',
       policyId: 'FIN-KYC-HOLD-001',
       reasoning:
-        'Regulated KYC precheck is allowed; sensitive identity documents require human review hold.',
+        'Regulated KYC precheck is allowed; sensitive identity documents require governance review hold.',
     };
   }
 
