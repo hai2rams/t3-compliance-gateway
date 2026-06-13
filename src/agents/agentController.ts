@@ -23,6 +23,10 @@ import {
   orchestrateAgentTools,
   orchestrateBlockedTools,
 } from './agentToolOrchestrator.js';
+import {
+  buildAgentPassportFromGovernance,
+  evaluateAgentGovernance,
+} from '../services/t3GovernanceService.js';
 
 function createMissionId(): string {
   return `mission_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -80,28 +84,67 @@ function toolForIntent(intent: string): string {
   }
 }
 
-function buildBlockedResponse(
+function deriveRequestedExternalTools(
+  enrichmentAllowed: boolean,
+  tokenRoute: string,
+): string[] {
+  const tools: string[] = [];
+  if (enrichmentAllowed || tokenRoute === 'WEB_RESEARCH') {
+    tools.push('BrightData/MCP');
+  }
+  if (tokenRoute !== 'BLOCKED_BY_POLICY') {
+    tools.push('Kimi', 'SenseNova');
+  }
+  return tools;
+}
+
+async function buildBlockedResponse(
   missionId: string,
   request: AgentIntakeRequest,
   intake: ReturnType<typeof runRegulatedIntakeAgent>,
   trace: AgentTraceStep[],
   reason: string,
   options: { promptInjectionBlocked?: boolean; intentControlBlocked?: boolean } = {},
-): AgentIntakeResponse {
+): Promise<AgentIntakeResponse> {
   const dataBoundary = buildAgentDataBoundary(request.content);
+  const policyId = options.promptInjectionBlocked
+    ? 'PROMPT-INJECTION-GUARD'
+    : 'INTENT-CONTROL-BLOCK';
+
+  const t3Governance = await evaluateAgentGovernance({
+    missionId,
+    agentId: request.agentId,
+    inferredIntent: intake.inferredIntent,
+    selectedWorkflow: intake.selectedWorkflow,
+    dataSensitivity: intake.containsPii ? 'HIGH' : 'MEDIUM',
+    sensitiveDataDetected: dataBoundary.detected,
+    detectedSensitiveTypes: dataBoundary.types,
+    requestedExternalTools: [],
+    requestedRuntime: 'NONE',
+    finalAgentState: 'AUTO_BLOCKED_BY_POLICY',
+    executionPlan: { status: 'NOT_PLANNED', targetRuntime: 'NONE' },
+    policyId,
+    publicEnrichmentAllowed: false,
+    purpose: request.goal,
+    trust: { provider: 'Terminal 3', status: 'FAILED', contractMode: 'TEE_COMPLIANCE_GATEWAY' },
+  });
+
   const toolOrchestration = orchestrateBlockedTools(missionId, {
     intent: intake.inferredIntent,
     modalities: intake.modalities,
     promptInjectionBlocked: Boolean(options.promptInjectionBlocked),
     intentControlBlocked: Boolean(options.intentControlBlocked),
     blockReason: reason,
-    trust: { status: 'DENIED', provider: 'Terminal 3' },
+    trust: { status: 'FAILED', provider: 'Terminal 3' },
     tokenRouterDecision: { route: 'BLOCKED_BY_POLICY' },
     dataBoundary,
     enrichmentAllowed: false,
     publicSearchQuery: '',
     enrichmentResult: { status: 'BLOCKED' },
+    t3Governance,
   });
+
+  const agentControl = getAgentControl(request.agentId);
 
   return {
     missionId,
@@ -116,12 +159,13 @@ function buildBlockedResponse(
       models: ['SKIP_LLM'],
       routeReason: reason,
     },
-    agentPassport: { status: 'DENIED', reason },
+    agentPassport: buildAgentPassportFromGovernance(t3Governance, agentControl.requiresT3Passport),
     dataBoundary,
     enrichmentPlan: { allowed: false, publicSearchQuery: '', status: 'BLOCKED' },
     llmJudge: { verdict: 'AUTO_BLOCKED_BY_POLICY', summary: reason },
     executionPlan: { status: 'NOT_PLANNED', targetRuntime: 'NONE' },
     toolOrchestration,
+    t3Governance,
     finalAgentState: 'AUTO_BLOCKED_BY_POLICY',
     timestamp: new Date().toISOString(),
   };
@@ -160,7 +204,7 @@ export async function runAgentIntake(request: AgentIntakeRequest): Promise<Agent
       'BLOCKED',
       'Untrusted override instructions detected in uploaded content.',
     );
-    const blocked = buildBlockedResponse(
+    const blocked = await buildBlockedResponse(
       missionId,
       request,
       intake,
@@ -179,7 +223,7 @@ export async function runAgentIntake(request: AgentIntakeRequest): Promise<Agent
       'BLOCKED',
       'Intent not permitted for this agent identity.',
     );
-    const blocked = buildBlockedResponse(
+    const blocked = await buildBlockedResponse(
       missionId,
       request,
       intake,
@@ -289,6 +333,49 @@ export async function runAgentIntake(request: AgentIntakeRequest): Promise<Agent
     runtime.note,
   );
 
+  const executionPlanPayload = {
+    targetRuntime: executionSpec.targetRuntime,
+    executionMode: executionSpec.executionMode,
+    jobClass: executionSpec.jobClass,
+    containerImage: executionSpec.containerImage,
+    status: executionSpec.status,
+    reason: executionSpec.reason,
+    executed: runtime.executed,
+    runtimeStatus: runtime.status,
+  };
+
+  const t3Governance = await evaluateAgentGovernance({
+    missionId,
+    agentId: request.agentId,
+    inferredIntent: intake.inferredIntent,
+    selectedWorkflow: intake.selectedWorkflow,
+    dataSensitivity: intake.containsPii ? 'HIGH' : 'MEDIUM',
+    sensitiveDataDetected: dataBoundary.detected,
+    detectedSensitiveTypes: dataBoundary.types,
+    requestedExternalTools: deriveRequestedExternalTools(
+      enrichmentSpec.allowed,
+      tokenRouterDecision.route,
+    ),
+    requestedRuntime: executionSpec.targetRuntime,
+    finalAgentState: judge.verdict,
+    executionPlan: executionPlanPayload,
+    policyId: compliance.policyId,
+    publicEnrichmentAllowed: enrichmentSpec.allowed && Boolean(enrichmentSpec.publicQuery),
+    purpose: request.goal,
+    trust,
+  });
+
+  trace.add(
+    'Terminal3Agent',
+    'GOVERNANCE_PROOF',
+    t3Governance.governanceDecision === 'BLOCK_EXECUTION'
+      ? 'BLOCKED'
+      : t3Governance.governanceDecision === 'HOLD_FOR_REVIEW'
+        ? 'HOLD'
+        : 'COMPLETED',
+    t3Governance.auditSummary,
+  );
+
   const toolOrchestration = orchestrateAgentTools({
     missionId,
     intent: intake.inferredIntent,
@@ -307,6 +394,7 @@ export async function runAgentIntake(request: AgentIntakeRequest): Promise<Agent
     judge,
     executionSpec,
     runtime,
+    t3Governance,
   });
 
   trace.add(
@@ -336,13 +424,7 @@ export async function runAgentIntake(request: AgentIntakeRequest): Promise<Agent
         selectedLlmProvider: compliance.route.selectedLlmProvider,
       },
     },
-    agentPassport: {
-      provider: trust.provider,
-      status: trust.status,
-      contractMode: trust.contractMode,
-      requiresT3Passport: agentControl.requiresT3Passport,
-      permissionScope: intake.inferredIntent,
-    },
+    agentPassport: buildAgentPassportFromGovernance(t3Governance, agentControl.requiresT3Passport),
     dataBoundary: {
       detected: dataBoundary.detected,
       types: dataBoundary.types,
@@ -366,17 +448,9 @@ export async function runAgentIntake(request: AgentIntakeRequest): Promise<Agent
       kimiStatus: compliance.kimi.status,
       senseNovaStatus: compliance.senseNova?.status,
     },
-    executionPlan: {
-      targetRuntime: executionSpec.targetRuntime,
-      executionMode: executionSpec.executionMode,
-      jobClass: executionSpec.jobClass,
-      containerImage: executionSpec.containerImage,
-      status: executionSpec.status,
-      reason: executionSpec.reason,
-      executed: runtime.executed,
-      runtimeStatus: runtime.status,
-    },
+    executionPlan: executionPlanPayload,
     toolOrchestration,
+    t3Governance,
     finalAgentState: judge.verdict,
     timestamp: new Date().toISOString(),
   };

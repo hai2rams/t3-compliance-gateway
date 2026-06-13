@@ -5,6 +5,11 @@ import type { LlmJudgeResult } from '../agents/llmJudgeAgent.js';
 import type { ExecutionSpec } from '../execution/executionSpec.js';
 import type { RuntimeExecutionResult } from '../execution/executionSpec.js';
 import type { BrightDataEnrichmentResult } from '../adapters/brightDataAdapter.js';
+import type { T3Governance } from '../schemas/agentIntakeSchema.js';
+import {
+  terminal3ToolReason,
+  terminal3ToolStatus,
+} from '../services/t3GovernanceService.js';
 import {
   isAdapterMocked,
   isGlobalMockMode,
@@ -37,6 +42,7 @@ export type ToolDecisionInput = {
   judge: LlmJudgeResult | { verdict: FinalAgentState; summary: string };
   executionSpec: ExecutionSpec | { targetRuntime: string; status: string };
   runtime: RuntimeExecutionResult | { executed: boolean; status: string };
+  t3Governance?: T3Governance;
 };
 
 function executionPermitted(state: FinalAgentState): boolean {
@@ -52,6 +58,16 @@ function hasDocumentModality(modalities: Modality[]): boolean {
 }
 
 function resolveTerminal3(input: ToolDecisionInput): ToolChainEntry {
+  if (input.t3Governance) {
+    const status = terminal3ToolStatus(input.t3Governance);
+    return {
+      tool: 'Terminal 3',
+      role: 'identity_governance_audit',
+      status,
+      reason: terminal3ToolReason(input.t3Governance),
+    };
+  }
+
   if (input.promptInjectionBlocked || input.intentControlBlocked) {
     return {
       tool: 'Terminal 3',

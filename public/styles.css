@@ -759,3 +759,55 @@ td.review { color: var(--review); }
   font-size: 0.72rem;
   color: var(--muted);
 }
+
+.t3-governance-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem 1.1rem;
+  margin-bottom: 0.85rem;
+}
+
+.t3-governance-dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.55rem 1rem;
+}
+
+.t3-governance-dl dt {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+
+.t3-governance-dl dd {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.t3-governance-dl dd:last-child {
+  grid-column: 1 / -1;
+}
+
+.t3-mock-label {
+  color: var(--hold);
+  font-weight: 700;
+}
+
+.t3-live-label {
+  color: var(--allow);
+  font-weight: 700;
+}
+
+.t3-gov-mock-note {
+  margin: 0.75rem 0 0;
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  color: #fbbf24;
+  font-size: 0.8rem;
+}

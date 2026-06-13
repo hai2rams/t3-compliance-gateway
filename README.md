@@ -134,6 +134,19 @@ API reference: [`docs/api/README.md`](docs/api/README.md)
 
 Adapter locations: `src/adapters/terminal3Adapter.ts`, `tokenRouterAdapter.ts`, `kimiAdapter.ts`, `senseNovaAdapter.ts`, `geminiAdapter.ts`, `daytonaAdapter.ts`, `nosanaAdapter.ts`, `videoDbAdapter.ts`.
 
+## Terminal 3 governance hardening
+
+The autonomous intake flow (`POST /api/v1/agent/intake`) returns a structured `t3Governance` object from `src/services/t3GovernanceService.ts`:
+
+- **Agent identity verification** — wraps the existing `terminal3Adapter` / T3 SDK session path when live credentials are configured.
+- **Scoped permissions** — `permissionStatus` and `scope.allowedIntent` / `allowedExternalTools` / `allowedRuntime` reflect the governed case.
+- **Execution plan hash** — deterministic `executionPlanHash` over the planned runtime payload for audit replay.
+- **Governance decision hash** — deterministic `decisionHash` over policy + final agent state.
+- **TEE compliance gateway mode** — `contractMode: TEE_COMPLIANCE_GATEWAY_READY` (live) or `TEE_COMPLIANCE_GATEWAY_MOCK` (mock-safe).
+- **Mock-safe fallback** — when `MOCK_MODE=true`, `T3N_API_KEY`, or `T3N_CONTRACT_ID` (> 0) are missing, returns `mode: MOCK`, `identityStatus: MOCK_VERIFIED`, and a clear mock audit summary without failing the request. `LIVE` / `VERIFIED` / `USED` only appear when all live checks pass and `verifyAgentTrust()` returns `VERIFIED`.
+
+`agentPassport` is aligned to `t3Governance` (`didStatus`, `permissionScope`, `blockedCapabilities`). The agentic tool chain Terminal 3 card reflects `USED` (LIVE) or `MOCKED` (mock envelope).
+
 ## Security & governance notes
 
 - **Never commit** `.env`, `.env.local`, or API keys. Use `.env.example` placeholders only.

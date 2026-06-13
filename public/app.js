@@ -82,6 +82,7 @@ const traceTimeline = document.getElementById('trace-timeline');
 const sponsorRow = document.getElementById('sponsor-row');
 const toolChainSection = document.getElementById('tool-chain-section');
 const toolChainGrid = document.getElementById('tool-chain-grid');
+const t3GovernanceSection = document.getElementById('t3-governance-section');
 const developerPayload = document.getElementById('developer-payload');
 
 let lastAutopilotRequest = null;
@@ -213,6 +214,60 @@ function renderOutcome(data) {
   document.getElementById('out-exec-status').textContent = execStatus;
 }
 
+function shortHash(value) {
+  if (!value || typeof value !== 'string') return '—';
+  const raw = value.replace(/^sha256:/, '');
+  return raw.length > 16 ? `${raw.slice(0, 16)}…` : raw;
+}
+
+function renderT3Governance(data) {
+  const gov = data.t3Governance;
+  const mockNote = document.getElementById('t3-gov-mock-note');
+  if (!gov) {
+    t3GovernanceSection.hidden = true;
+    if (mockNote) mockNote.hidden = true;
+    return;
+  }
+
+  t3GovernanceSection.hidden = false;
+  const isMock = gov.mode !== 'LIVE';
+
+  const modeEl = document.getElementById('t3-gov-mode');
+  modeEl.textContent = gov.mode || 'MOCK';
+  modeEl.className = `t3-gov-mode-value ${isMock ? 't3-mock-label' : 't3-live-label'}`;
+
+  const identityEl = document.getElementById('t3-gov-identity');
+  const identityStatus = isMock ? 'MOCK_VERIFIED' : gov.identityStatus || '—';
+  identityEl.textContent = identityStatus;
+  identityEl.className = `t3-gov-identity-value ${isMock ? 't3-mock-label' : 't3-live-label'}`;
+
+  document.getElementById('t3-gov-permission').textContent = gov.permissionStatus || '—';
+  document.getElementById('t3-gov-decision').textContent = gov.governanceDecision || '—';
+  document.getElementById('t3-gov-contract').textContent = gov.contractMode || '—';
+  document.getElementById('t3-gov-policy').textContent = gov.proof?.policyId || '—';
+  document.getElementById('t3-gov-id').textContent = gov.proof?.governanceId || '—';
+  document.getElementById('t3-gov-decision-hash').textContent = shortHash(gov.proof?.decisionHash);
+  document.getElementById('t3-gov-exec-hash').textContent = shortHash(gov.proof?.executionPlanHash);
+  document.getElementById('t3-gov-audit').textContent = gov.auditSummary || '—';
+
+  if (mockNote) {
+    mockNote.hidden = !isMock;
+  }
+
+  const t3Tool = data.toolOrchestration?.tools?.find((t) => t.tool === 'Terminal 3');
+  const t3ToolLabel = t3Tool
+    ? `${t3Tool.status}: ${t3Tool.reason}`
+    : isMock
+      ? 'MOCKED: mock-safe governance proof'
+      : 'USED: live governance proof';
+
+  document.getElementById('card-t3-identity').textContent = identityStatus;
+  document.getElementById('card-t3-status').textContent = gov.permissionStatus || '—';
+  document.getElementById('card-t3-scope').textContent =
+    gov.scope?.allowedIntent || data.inferredIntent || '—';
+  document.getElementById('card-t3-audit').textContent = t3ToolLabel;
+}
+
 function toolStatusClass(status) {
   if (status === 'BLOCKED') return 'tool-blocked';
   if (status === 'SKIPPED') return 'tool-skipped';
@@ -254,9 +309,9 @@ function renderToolOrchestration(data) {
     document.getElementById('card-tr-reason').textContent =
       `${statusByTool['TokenRouter'].status}: ${statusByTool['TokenRouter'].reason}`;
   }
-  if (statusByTool['Terminal 3']) {
+  if (statusByTool['Terminal 3'] && !data.t3Governance) {
     document.getElementById('card-t3-audit').textContent =
-      `${statusByTool['Terminal 3'].status} — ${statusByTool['Terminal 3'].reason}`;
+      `${statusByTool['Terminal 3'].status}: ${statusByTool['Terminal 3'].reason}`;
   }
   if (statusByTool['BrightData/MCP']) {
     document.getElementById('card-bd-status').textContent =
@@ -291,13 +346,19 @@ function renderSponsorCards(data) {
     (tr.secondaryProviders || tr.models || []).join(', ') || '—';
   document.getElementById('card-tr-reason').textContent = tr.routeReason || '—';
 
-  document.getElementById('card-t3-identity').textContent =
-    passport.status === 'DENIED' ? 'Denied' : 'Verified';
-  document.getElementById('card-t3-status').textContent = passport.status || '—';
-  document.getElementById('card-t3-scope').textContent =
-    passport.permissionScope || data.inferredIntent || '—';
-  document.getElementById('card-t3-audit').textContent =
-    passport.status === 'DENIED' ? 'Blocked' : 'Audit ready';
+  if (!data.t3Governance) {
+    document.getElementById('card-t3-identity').textContent =
+      passport.didStatus || passport.status || '—';
+    document.getElementById('card-t3-status').textContent =
+      passport.permissionStatus || passport.status || '—';
+    document.getElementById('card-t3-scope').textContent =
+      passport.permissionScope?.allowedIntent ||
+      passport.permissionScope ||
+      data.inferredIntent ||
+      '—';
+    document.getElementById('card-t3-audit').textContent =
+      passport.mode === 'LIVE' ? 'Live governance proof' : 'Mock-safe governance proof';
+  }
 
   const enrichAllowed = enrich.allowed ? 'Public-only enrichment allowed' : 'Enrichment blocked';
   document.getElementById('card-bd-enrichment').textContent = enrichAllowed;
@@ -322,6 +383,7 @@ function renderSponsorCards(data) {
     : 'Recorded';
 
   renderToolOrchestration(data);
+  renderT3Governance(data);
 }
 
 function renderDeveloperPayload() {
@@ -353,6 +415,7 @@ async function runAutopilot() {
   animateTraceLoading();
   sponsorRow.hidden = true;
   toolChainSection.hidden = true;
+  t3GovernanceSection.hidden = true;
 
   try {
     const res = await fetch('/api/v1/agent/intake', {

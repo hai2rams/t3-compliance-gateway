@@ -68,6 +68,42 @@ export type ToolOrchestration = {
   auditSummary: string;
 };
 
+export type T3GovernanceMode = 'LIVE' | 'MOCK';
+
+export type T3GovernanceIdentityStatus = 'VERIFIED' | 'MOCK_VERIFIED' | 'DENIED';
+
+export type T3GovernancePermissionStatus = 'ALLOWED' | 'SCOPED' | 'DENIED';
+
+export type T3GovernanceDecision = 'ALLOW_EXECUTION' | 'HOLD_FOR_REVIEW' | 'BLOCK_EXECUTION';
+
+export type T3DataBoundaryScope = 'PUBLIC_ONLY' | 'INTERNAL_ONLY' | 'RESTRICTED_SENSITIVE';
+
+export type T3ContractMode = 'TEE_COMPLIANCE_GATEWAY_READY' | 'TEE_COMPLIANCE_GATEWAY_MOCK';
+
+export type T3Governance = {
+  provider: 'Terminal 3';
+  mode: T3GovernanceMode;
+  identityStatus: T3GovernanceIdentityStatus;
+  permissionStatus: T3GovernancePermissionStatus;
+  contractMode: T3ContractMode;
+  governanceDecision: T3GovernanceDecision;
+  scope: {
+    agentId: string;
+    allowedIntent: string;
+    allowedExternalTools: string[];
+    allowedRuntime: string;
+    dataBoundary: T3DataBoundaryScope;
+  };
+  proof: {
+    governanceId: string;
+    policyId: string;
+    decisionHash: string;
+    executionPlanHash: string;
+    timestamp: string;
+  };
+  auditSummary: string;
+};
+
 export type AgentIntakeResponse = {
   missionId: string;
   agentId: string;
@@ -82,6 +118,7 @@ export type AgentIntakeResponse = {
   llmJudge: Record<string, unknown>;
   executionPlan: Record<string, unknown>;
   toolOrchestration: ToolOrchestration;
+  t3Governance: T3Governance;
   finalAgentState: FinalAgentState;
   timestamp: string;
 };
