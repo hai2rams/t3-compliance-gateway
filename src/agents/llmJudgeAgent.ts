@@ -20,7 +20,7 @@ export function runLlmJudgeAgent(
     return {
       verdict: 'AUTO_HOLD_REVIEW_REQUIRED',
       summary:
-        'Review hold required — sensitive KYC identity and financial documents need human verification.',
+        'Review hold required — sensitive KYC identity and financial documents need governance verification.',
       policyAligned: true,
       requiresHumanVerification: true,
     };
@@ -44,7 +44,7 @@ export function runLlmJudgeAgent(
     return {
       verdict: 'AUTO_HOLD_REVIEW_REQUIRED',
       summary:
-        'Review hold required — regulated case needs human verification before business action.',
+        'Review hold required — regulated case needs governance verification before business action.',
       policyAligned: true,
       requiresHumanVerification: true,
     };

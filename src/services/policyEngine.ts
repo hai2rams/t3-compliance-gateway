@@ -47,7 +47,7 @@ export function evaluatePolicy(
     return {
       decision: 'REVIEW',
       policyId: 'GLOBAL-HIGH-RISK-ESCALATION',
-      reasoning: `Risk score ${riskScore} exceeds auto-approval threshold; escalated to human review.`,
+      reasoning: `Risk score ${riskScore} exceeds auto-approval threshold; escalated to governance review.`,
     };
   }
 

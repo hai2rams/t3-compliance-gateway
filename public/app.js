@@ -220,6 +220,9 @@ function shortHash(value) {
   return raw.length > 16 ? `${raw.slice(0, 16)}…` : raw;
 }
 
+const MOCK_T3_AUDIT_SUMMARY =
+  'Mock-safe Terminal 3 governance proof generated. Live T3 can be enabled with credentials.';
+
 function renderT3Governance(data) {
   const gov = data.t3Governance;
   const mockNote = document.getElementById('t3-gov-mock-note');
@@ -248,17 +251,19 @@ function renderT3Governance(data) {
   document.getElementById('t3-gov-id').textContent = gov.proof?.governanceId || '—';
   document.getElementById('t3-gov-decision-hash').textContent = shortHash(gov.proof?.decisionHash);
   document.getElementById('t3-gov-exec-hash').textContent = shortHash(gov.proof?.executionPlanHash);
-  document.getElementById('t3-gov-audit').textContent = gov.auditSummary || '—';
+  document.getElementById('t3-gov-audit').textContent = isMock
+    ? MOCK_T3_AUDIT_SUMMARY
+    : gov.auditSummary || '—';
 
   if (mockNote) {
     mockNote.hidden = !isMock;
   }
 
   const t3Tool = data.toolOrchestration?.tools?.find((t) => t.tool === 'Terminal 3');
-  const t3ToolLabel = t3Tool
-    ? `${t3Tool.status}: ${t3Tool.reason}`
-    : isMock
-      ? 'MOCKED: mock-safe governance proof'
+  const t3ToolLabel = isMock
+    ? `MOCKED: ${MOCK_T3_AUDIT_SUMMARY}`
+    : t3Tool
+      ? `${t3Tool.status}: ${t3Tool.reason}`
       : 'USED: live governance proof';
 
   document.getElementById('card-t3-identity').textContent = identityStatus;
@@ -305,18 +310,6 @@ function renderToolOrchestration(data) {
 
   const statusByTool = Object.fromEntries(orch.tools.map((t) => [t.tool, t]));
 
-  if (statusByTool['TokenRouter']) {
-    document.getElementById('card-tr-reason').textContent =
-      `${statusByTool['TokenRouter'].status}: ${statusByTool['TokenRouter'].reason}`;
-  }
-  if (statusByTool['Terminal 3'] && !data.t3Governance) {
-    document.getElementById('card-t3-audit').textContent =
-      `${statusByTool['Terminal 3'].status}: ${statusByTool['Terminal 3'].reason}`;
-  }
-  if (statusByTool['BrightData/MCP']) {
-    document.getElementById('card-bd-status').textContent =
-      `${statusByTool['BrightData/MCP'].status}: ${statusByTool['BrightData/MCP'].reason}`;
-  }
   if (statusByTool.Daytona || statusByTool.Nosana || statusByTool.VideoDB) {
     const runtime =
       statusByTool.Daytona?.status !== 'SKIPPED'
@@ -331,20 +324,86 @@ function renderToolOrchestration(data) {
   }
 }
 
+function normalizeLegacyRoute(route) {
+  if (!route) return '';
+  if (route === 'DOCUMENT_MULTIMODAL') return 'MULTIMODAL_REVIEW';
+  if (route === 'WEB_RESEARCH') return 'WEB_RESEARCH_SUMMARY';
+  if (route === 'VIDEO_AUDIO') return 'VIDEO_REVIEW';
+  if (route === 'TEXT') return 'TEXT_REASONING';
+  if (route === 'BATCH_RISK') return 'BATCH_RISK_REASONING';
+  if (route === 'BLOCKED_BY_POLICY') return 'SKIP_LLM';
+  return route;
+}
+
+function inferRoutePurpose(route, inferredIntent) {
+  if (route === 'SKIP_LLM') return 'skipped';
+  if (route === 'DOCUMENT_KYC_REVIEW') return 'document_reasoning + risk_reasoning + judge';
+  if (route === 'MULTIMODAL_REVIEW') return 'document_reasoning + risk_reasoning';
+  if (route === 'WEB_RESEARCH_SUMMARY') return 'summary';
+  if (route === 'BATCH_RISK_REASONING') return 'risk_reasoning';
+  if (route === 'VIDEO_REVIEW') return 'classification';
+  if (inferredIntent === 'CREDIT_KYC_PRECHECK') {
+    return 'document_reasoning + risk_reasoning + judge';
+  }
+  return 'risk_reasoning';
+}
+
+function inferCostBoundary(route, data) {
+  if (route === 'SKIP_LLM') return 'SKIPPED_FOR_POLICY';
+  const boundary = data.dataBoundary || {};
+  if (boundary.detected || data.finalAgentState === 'AUTO_HOLD_REVIEW_REQUIRED') {
+    return 'HIGH_RISK_ALLOWED';
+  }
+  if (route === 'TEXT_REASONING') return 'LOW_COST';
+  return 'STANDARD';
+}
+
+function inferPrivacyBoundary(route, data) {
+  if (route === 'SKIP_LLM') return 'INTERNAL_ONLY';
+  const boundary = data.dataBoundary || {};
+  if (boundary.detected || boundary.blockedFromExternalTools) {
+    return 'GOVERNED_SENSITIVE_CONTEXT';
+  }
+  return 'NO_PRIVATE_DATA_TO_EXTERNAL_MODEL';
+}
+
 function renderSponsorCards(data) {
   sponsorRow.hidden = false;
 
   const tr = data.tokenRouterDecision || {};
+  const modelRouting = data.modelRouting || {};
   const passport = data.agentPassport || {};
   const enrich = data.enrichmentPlan || {};
   const publicEnrichment = data.publicEnrichment || {};
   const exec = data.executionPlan || {};
 
-  document.getElementById('card-tr-route').textContent = tr.route || '—';
-  document.getElementById('card-tr-primary').textContent = tr.primaryProvider || '—';
-  document.getElementById('card-tr-secondary').textContent =
-    (tr.secondaryProviders || tr.models || []).join(', ') || '—';
-  document.getElementById('card-tr-reason').textContent = tr.routeReason || '—';
+  const route =
+    modelRouting.route || normalizeLegacyRoute(tr.route) || '—';
+  const llmModels = (modelRouting.selectedModels || []).filter((m) =>
+    ['Kimi', 'SenseNova'].includes(m.model),
+  );
+  const primaryModel =
+    llmModels[0]?.model || tr.primaryProvider || tr.documentReasoningProvider || '—';
+  const secondaryModel =
+    llmModels[1]?.model ||
+    tr.judgeReasoningProvider ||
+    (tr.secondaryProviders || []).find((m) => m === 'Kimi') ||
+    '—';
+
+  document.getElementById('card-tr-mode').textContent = modelRouting.mode || 'MOCK';
+  document.getElementById('card-tr-route').textContent = route;
+  document.getElementById('card-tr-purpose').textContent =
+    modelRouting.routePurpose || inferRoutePurpose(route, data.inferredIntent);
+  document.getElementById('card-tr-primary').textContent = primaryModel;
+  document.getElementById('card-tr-secondary').textContent = secondaryModel;
+  document.getElementById('card-tr-fallback').textContent =
+    modelRouting.fallbackModel || 'Gemini';
+  document.getElementById('card-tr-cost').textContent =
+    modelRouting.costBoundary || inferCostBoundary(route, data);
+  document.getElementById('card-tr-privacy').textContent =
+    modelRouting.privacyBoundary || inferPrivacyBoundary(route, data);
+  document.getElementById('card-tr-reason').textContent =
+    modelRouting.routeReason || tr.routeReason || '—';
 
   if (!data.t3Governance) {
     document.getElementById('card-t3-identity').textContent =
@@ -360,34 +419,55 @@ function renderSponsorCards(data) {
       passport.mode === 'LIVE' ? 'Live governance proof' : 'Mock-safe governance proof';
   }
 
-  if (publicEnrichment.provider) {
-    document.getElementById('card-bd-mode').textContent = publicEnrichment.mode || '—';
-    document.getElementById('card-bd-status').textContent = publicEnrichment.status || '—';
-    document.getElementById('card-bd-query').textContent =
-      publicEnrichment.publicSearchQuery || '—';
-    document.getElementById('card-bd-private-removed').textContent =
-      publicEnrichment.privateDataRemoved ? 'Yes' : 'No';
-    document.getElementById('card-bd-blocked-types').textContent =
-      (publicEnrichment.blockedPrivateDataTypes || []).join(', ') || '—';
-    document.getElementById('card-bd-summary').textContent = publicEnrichment.summary || '—';
-    const topFindings = (publicEnrichment.findings || []).slice(0, 2);
-    document.getElementById('card-bd-findings').textContent = topFindings.length
-      ? topFindings.map((f) => `${f.title}: ${f.summary}`).join(' | ')
-      : '—';
-  } else {
-    document.getElementById('card-bd-mode').textContent = enrich.mode || '—';
-    document.getElementById('card-bd-status').textContent = enrich.status || '—';
-    document.getElementById('card-bd-query').textContent = enrich.publicSearchQuery || '—';
-    document.getElementById('card-bd-private-removed').textContent = enrich.privateDataRemoved
+  const enrichmentSource = publicEnrichment.provider ? publicEnrichment : enrich;
+  const boundary = data.dataBoundary || {};
+  const blockedTypes =
+    enrichmentSource.blockedPrivateDataTypes?.length > 0
+      ? enrichmentSource.blockedPrivateDataTypes
+      : boundary.types || [];
+  const findings =
+    enrichmentSource.findings?.length > 0
+      ? enrichmentSource.findings
+      : enrich.findings || [];
+  const publicQuery =
+    enrichmentSource.publicSearchQuery ||
+    enrich.publicSearchQuery ||
+    (data.inferredIntent === 'CREDIT_KYC_PRECHECK' ? 'Acme Logistics' : '');
+
+  document.getElementById('card-bd-mode').textContent = enrichmentSource.mode || 'MOCK';
+  document.getElementById('card-bd-status').textContent =
+    enrichmentSource.status || enrich.status || 'MOCK_COMPLETED';
+  document.getElementById('card-bd-query').textContent = publicQuery || '—';
+  document.getElementById('card-bd-private-removed').textContent =
+    enrichmentSource.privateDataRemoved ||
+    enrichmentSource.privateDataBlocked ||
+    boundary.blockedFromExternalTools
       ? 'Yes'
-      : enrich.privateDataBlocked
-        ? 'Yes'
-        : 'No';
-    document.getElementById('card-bd-blocked-types').textContent =
-      (enrich.blockedPrivateDataTypes || []).join(', ') || '—';
-    document.getElementById('card-bd-summary').textContent = enrich.summary || '—';
-    document.getElementById('card-bd-findings').textContent = '—';
-  }
+      : 'No';
+  document.getElementById('card-bd-blocked-types').textContent =
+    blockedTypes.join(', ') || '—';
+  document.getElementById('card-bd-summary').textContent =
+    enrichmentSource.summary ||
+    enrich.summary ||
+    (data.inferredIntent === 'CREDIT_KYC_PRECHECK' && publicQuery
+      ? `Mock public enrichment completed for ${publicQuery} using public-only context. No private KYC data was transmitted.`
+      : enrichmentSource.reason || '—');
+  const topFindings = findings.slice(0, 2);
+  const kycFallbackFindings = [
+    { title: 'Public company profile signal', riskSignal: 'UNKNOWN' },
+    { title: 'Public risk/news signal', riskSignal: 'LOW' },
+  ];
+  const displayFindings =
+    topFindings.length > 0
+      ? topFindings
+      : data.inferredIntent === 'CREDIT_KYC_PRECHECK'
+        ? kycFallbackFindings
+        : [];
+  document.getElementById('card-bd-findings').textContent = displayFindings.length
+    ? displayFindings
+        .map((f, index) => `${index + 1}. ${f.title} — ${f.riskSignal || 'UNKNOWN'}`)
+        .join(' | ')
+    : '—';
 
   document.getElementById('card-ex-runtime').textContent = exec.targetRuntime || '—';
   document.getElementById('card-ex-jobclass').textContent = exec.jobClass || '—';

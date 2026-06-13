@@ -9,7 +9,6 @@ import {
   runRegulatedIntakeAgent,
   buildAgentDataBoundary,
 } from './regulatedIntakeAgent.js';
-import { runTokenRouterAgent } from './tokenRouterAgent.js';
 import { runLlmJudgeAgent } from './llmJudgeAgent.js';
 import { AgentTraceBuilder, detectPromptInjection } from './agentTrace.js';
 import { runComplianceCheck } from '../services/agentCompliance.js';
@@ -30,6 +29,10 @@ import {
   buildAgentPassportFromGovernance,
   evaluateAgentGovernance,
 } from '../services/t3GovernanceService.js';
+import {
+  buildTokenRouterDecisionFromModelRouting,
+  routeModelForAgentTask,
+} from '../services/modelRoutingService.js';
 
 function createMissionId(): string {
   return `mission_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -89,13 +92,13 @@ function toolForIntent(intent: string): string {
 
 function deriveRequestedExternalTools(
   enrichmentAllowed: boolean,
-  tokenRoute: string,
+  modelRoute: string,
 ): string[] {
   const tools: string[] = [];
-  if (enrichmentAllowed || tokenRoute === 'WEB_RESEARCH') {
+  if (enrichmentAllowed || modelRoute === 'WEB_RESEARCH' || modelRoute === 'WEB_RESEARCH_SUMMARY') {
     tools.push('BrightData/MCP');
   }
-  if (tokenRoute !== 'BLOCKED_BY_POLICY') {
+  if (modelRoute !== 'SKIP_LLM' && modelRoute !== 'BLOCKED_BY_POLICY') {
     tools.push('Kimi', 'SenseNova');
   }
   return tools;
@@ -148,6 +151,26 @@ async function buildBlockedResponse(
     promptInjectionBlocked: Boolean(options.promptInjectionBlocked),
   });
 
+  const modelRouting = routeModelForAgentTask({
+    missionId,
+    agentId: request.agentId,
+    inferredIntent: intake.inferredIntent,
+    detectedModality: intake.detectedModality,
+    modalities: intake.modalities,
+    riskScore: 100,
+    sensitiveDataDetected: dataBoundary.detected,
+    dataBoundary,
+    requestedTask: 'agent_intake',
+    finalAgentState: 'AUTO_BLOCKED_BY_POLICY',
+    policyDecision: 'DENY',
+    promptInjectionBlocked: Boolean(options.promptInjectionBlocked),
+    intentControlBlocked: Boolean(options.intentControlBlocked),
+    kimiStatus: 'SKIPPED',
+    senseNovaStatus: 'SKIPPED',
+  });
+
+  const tokenRouterDecision = buildTokenRouterDecisionFromModelRouting(modelRouting);
+
   const toolOrchestration = orchestrateBlockedTools(missionId, {
     intent: intake.inferredIntent,
     modalities: intake.modalities,
@@ -155,7 +178,8 @@ async function buildBlockedResponse(
     intentControlBlocked: Boolean(options.intentControlBlocked),
     blockReason: reason,
     trust: { status: 'FAILED', provider: 'Terminal 3' },
-    tokenRouterDecision: { route: 'BLOCKED_BY_POLICY' },
+    tokenRouterDecision,
+    modelRouting,
     dataBoundary,
     enrichmentAllowed: false,
     publicSearchQuery: '',
@@ -173,11 +197,15 @@ async function buildBlockedResponse(
     selectedWorkflow: intake.selectedWorkflow,
     agentTrace: trace,
     tokenRouterDecision: {
-      route: 'BLOCKED_BY_POLICY',
-      primaryProvider: 'NONE',
-      models: ['SKIP_LLM'],
-      routeReason: reason,
+      route: tokenRouterDecision.route,
+      primaryProvider: tokenRouterDecision.primaryProvider,
+      secondaryProviders: tokenRouterDecision.secondaryProviders,
+      models: tokenRouterDecision.models,
+      routeReason: tokenRouterDecision.routeReason,
+      documentReasoningProvider: tokenRouterDecision.documentReasoningProvider,
+      judgeReasoningProvider: tokenRouterDecision.judgeReasoningProvider,
     },
+    modelRouting,
     agentPassport: buildAgentPassportFromGovernance(t3Governance, agentControl.requiresT3Passport),
     dataBoundary,
     enrichmentPlan: buildEnrichmentPlanFromPublicEnrichment(publicEnrichment),
@@ -276,18 +304,6 @@ export async function runAgentIntake(request: AgentIntakeRequest): Promise<Agent
     `Agent passport ${trust.status}.`,
   );
 
-  const tokenRouterDecision = runTokenRouterAgent(
-    intake.modalities,
-    intake.inferredIntent,
-    compliance.decision,
-  );
-  trace.add(
-    'TokenRouterAgent',
-    'ROUTE_MODEL',
-    tokenRouterDecision.route === 'BLOCKED_BY_POLICY' ? 'BLOCKED' : 'COMPLETED',
-    tokenRouterDecision.routeReason,
-  );
-
   const dataBoundary = buildAgentDataBoundary(request.content);
   trace.add(
     'DataBoundaryAgent',
@@ -317,6 +333,32 @@ export async function runAgentIntake(request: AgentIntakeRequest): Promise<Agent
     'VALIDATE_RECOMMENDATION',
     judge.verdict === 'AUTO_BLOCKED_BY_POLICY' ? 'BLOCKED' : judge.verdict === 'AUTO_HOLD_REVIEW_REQUIRED' ? 'HOLD' : 'COMPLETED',
     judge.summary,
+  );
+
+  const modelRouting = routeModelForAgentTask({
+    missionId,
+    agentId: request.agentId,
+    inferredIntent: intake.inferredIntent,
+    detectedModality: intake.detectedModality,
+    modalities: intake.modalities,
+    riskScore: compliance.riskScore,
+    sensitiveDataDetected: dataBoundary.detected,
+    dataBoundary,
+    requestedTask: 'agent_intake',
+    finalAgentState: judge.verdict,
+    policyDecision: compliance.decision,
+    kimiStatus: compliance.kimi.status,
+    senseNovaStatus: compliance.senseNova?.status,
+    geminiStatus: compliance.gemini?.status,
+  });
+
+  const tokenRouterDecision = buildTokenRouterDecisionFromModelRouting(modelRouting);
+
+  trace.add(
+    'TokenRouterAgent',
+    'ROUTE_MODEL',
+    modelRouting.route === 'SKIP_LLM' ? 'BLOCKED' : 'COMPLETED',
+    modelRouting.routeReason,
   );
 
   const executionSpec = planExecution(
@@ -354,7 +396,7 @@ export async function runAgentIntake(request: AgentIntakeRequest): Promise<Agent
     detectedSensitiveTypes: dataBoundary.types,
     requestedExternalTools: deriveRequestedExternalTools(
       enrichmentSpec.allowed,
-      tokenRouterDecision.route,
+      modelRouting.route,
     ),
     requestedRuntime: executionSpec.targetRuntime,
     finalAgentState: judge.verdict,
@@ -411,6 +453,7 @@ export async function runAgentIntake(request: AgentIntakeRequest): Promise<Agent
     intentControlBlocked: false,
     trust,
     tokenRouterDecision,
+    modelRouting,
     dataBoundary,
     enrichmentAllowed: enrichmentSpec.allowed,
     publicSearchQuery: enrichmentSpec.publicQuery,
@@ -450,6 +493,7 @@ export async function runAgentIntake(request: AgentIntakeRequest): Promise<Agent
         selectedLlmProvider: compliance.route.selectedLlmProvider,
       },
     },
+    modelRouting,
     agentPassport: buildAgentPassportFromGovernance(t3Governance, agentControl.requiresT3Passport),
     dataBoundary: {
       detected: dataBoundary.detected,

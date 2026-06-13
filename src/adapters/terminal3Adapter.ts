@@ -1,5 +1,6 @@
 import type { TrustResult } from '../schemas/complianceCheckSchema.js';
 import { loadConfig } from '../config.js';
+import { isGlobalMockMode } from '../config/toolCapabilityMap.js';
 
 export type Terminal3VerifyInput = {
   agentId: string;
@@ -7,17 +8,26 @@ export type Terminal3VerifyInput = {
   purpose: string;
 };
 
-export async function verifyAgentTrust(input: Terminal3VerifyInput): Promise<TrustResult> {
+function canUseLiveTerminal3(): boolean {
   const config = loadConfig();
-  const hasApiKey = Boolean(config.t3nApiKey);
+  return (
+    Boolean(config.t3nApiKey) &&
+    !isGlobalMockMode() &&
+    Number.isInteger(config.t3nContractId) &&
+    config.t3nContractId > 0
+  );
+}
 
-  if (!hasApiKey || process.env.MOCK_MODE === 'true') {
+export async function verifyAgentTrust(input: Terminal3VerifyInput): Promise<TrustResult> {
+  if (!canUseLiveTerminal3()) {
     return {
       provider: 'Terminal 3',
       status: 'MOCK_VERIFIED',
       contractMode: 'TEE_COMPLIANCE_GATEWAY',
     };
   }
+
+  const config = loadConfig();
 
   try {
     const { getT3Session } = await import('../t3/client.js');

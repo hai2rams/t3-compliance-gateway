@@ -124,6 +124,49 @@ export type PublicEnrichment = {
   reason: string;
 };
 
+export type ModelRoutingModelStatus = 'LIVE' | 'MOCKED' | 'PLANNED' | 'SKIPPED';
+
+export type ModelRoutingRoute =
+  | 'DOCUMENT_KYC_REVIEW'
+  | 'TEXT_REASONING'
+  | 'MULTIMODAL_REVIEW'
+  | 'VIDEO_REVIEW'
+  | 'WEB_RESEARCH_SUMMARY'
+  | 'BATCH_RISK_REASONING'
+  | 'SKIP_LLM';
+
+export type ModelRoutingRoutePurpose = string;
+
+export type ModelRoutingCostBoundary =
+  | 'LOW_COST'
+  | 'STANDARD'
+  | 'HIGH_RISK_ALLOWED'
+  | 'SKIPPED_FOR_POLICY';
+
+export type ModelRoutingPrivacyBoundary =
+  | 'NO_PRIVATE_DATA_TO_EXTERNAL_MODEL'
+  | 'INTERNAL_ONLY'
+  | 'GOVERNED_SENSITIVE_CONTEXT';
+
+export type ModelRoutingSelectedModel = {
+  model: string;
+  role: string;
+  status: ModelRoutingModelStatus;
+  reason: string;
+};
+
+export type ModelRouting = {
+  provider: 'TokenRouter';
+  mode: 'LIVE' | 'MOCK';
+  route: ModelRoutingRoute;
+  routePurpose: ModelRoutingRoutePurpose;
+  selectedModels: ModelRoutingSelectedModel[];
+  fallbackModel: 'Gemini';
+  costBoundary: ModelRoutingCostBoundary;
+  privacyBoundary: ModelRoutingPrivacyBoundary;
+  routeReason: string;
+};
+
 export type AgentIntakeResponse = {
   missionId: string;
   agentId: string;
@@ -132,6 +175,7 @@ export type AgentIntakeResponse = {
   selectedWorkflow: string;
   agentTrace: AgentTraceStep[];
   tokenRouterDecision: Record<string, unknown>;
+  modelRouting: ModelRouting;
   agentPassport: Record<string, unknown>;
   dataBoundary: Record<string, unknown>;
   enrichmentPlan: Record<string, unknown>;

@@ -4,11 +4,16 @@ import type { TokenRouterAgentDecision } from '../agents/tokenRouterAgent.js';
 import type { LlmJudgeResult } from '../agents/llmJudgeAgent.js';
 import type { ExecutionSpec } from '../execution/executionSpec.js';
 import type { RuntimeExecutionResult } from '../execution/executionSpec.js';
-import type { PublicEnrichment } from '../schemas/agentIntakeSchema.js';
+import type { PublicEnrichment, ModelRouting } from '../schemas/agentIntakeSchema.js';
 import {
   brightDataToolReason,
   brightDataToolStatus,
 } from '../services/publicEnrichmentService.js';
+import {
+  resolveModelToolEntry,
+  tokenRouterToolReason,
+  tokenRouterToolStatus,
+} from '../services/modelRoutingService.js';
 import type { T3Governance } from '../schemas/agentIntakeSchema.js';
 import {
   terminal3ToolReason,
@@ -42,6 +47,7 @@ export type ToolDecisionInput = {
   publicSearchQuery: string;
   enrichmentResult?: { status: string };
   publicEnrichment?: PublicEnrichment;
+  modelRouting?: ModelRouting;
   kimiStatus?: string;
   senseNovaStatus?: string;
   judge: LlmJudgeResult | { verdict: FinalAgentState; summary: string };
@@ -92,7 +98,10 @@ function resolveTerminal3(input: ToolDecisionInput): ToolChainEntry {
     };
   }
 
-  const mocked = status === 'MOCK_VERIFIED' || isAdapterMocked('T3N_API_KEY');
+  const mocked =
+    status === 'MOCK_VERIFIED' ||
+    isAdapterMocked('T3N_API_KEY') ||
+    isGlobalMockMode();
   return {
     tool: 'Terminal 3',
     role: 'identity_governance_audit',
@@ -104,6 +113,15 @@ function resolveTerminal3(input: ToolDecisionInput): ToolChainEntry {
 }
 
 function resolveTokenRouter(input: ToolDecisionInput): ToolChainEntry {
+  if (input.modelRouting) {
+    return {
+      tool: 'TokenRouter',
+      role: 'model_routing_cost_boundary',
+      status: tokenRouterToolStatus(input.modelRouting),
+      reason: tokenRouterToolReason(input.modelRouting),
+    };
+  }
+
   if (input.promptInjectionBlocked || input.intentControlBlocked) {
     return {
       tool: 'TokenRouter',
@@ -132,6 +150,18 @@ function resolveTokenRouter(input: ToolDecisionInput): ToolChainEntry {
 }
 
 function resolveKimi(input: ToolDecisionInput): ToolChainEntry {
+  const routed = input.modelRouting
+    ? resolveModelToolEntry(input.modelRouting, 'Kimi', 'reasoning_summary_judge')
+    : null;
+  if (routed) {
+    return {
+      tool: 'Kimi',
+      role: 'reasoning_summary_judge',
+      status: routed.status,
+      reason: routed.reason,
+    };
+  }
+
   if (input.promptInjectionBlocked || input.intentControlBlocked) {
     return {
       tool: 'Kimi',
@@ -193,12 +223,24 @@ function resolveKimi(input: ToolDecisionInput): ToolChainEntry {
     role: 'reasoning_summary_judge',
     status: isAdapterMocked('KIMI_API_KEY') ? 'MOCKED' : 'PLANNED',
     reason: governanceBlocked(input.finalAgentState)
-      ? 'Kimi judge reasoning planned — awaiting governance clearance before live inference.'
+      ? 'Kimi remains planned until governance approval.'
       : 'Kimi queued for text reasoning, summary, and governed judge validation.',
   };
 }
 
 function resolveSenseNova(input: ToolDecisionInput): ToolChainEntry {
+  const routed = input.modelRouting
+    ? resolveModelToolEntry(input.modelRouting, 'SenseNova', 'document_image_multimodal_reasoning')
+    : null;
+  if (routed) {
+    return {
+      tool: 'SenseNova',
+      role: 'document_image_multimodal_reasoning',
+      status: routed.status,
+      reason: routed.reason,
+    };
+  }
+
   if (input.promptInjectionBlocked || input.intentControlBlocked) {
     return {
       tool: 'SenseNova',
@@ -512,8 +554,8 @@ export function deriveNextToolAction(
   if (finalAgentState === 'AUTO_HOLD_REVIEW_REQUIRED') {
     const planned = tools.find((t) => t.status === 'PLANNED' || t.status === 'MOCKED');
     return planned
-      ? `Prepare governance review package; ${planned.tool} remains planned until human approval.`
-      : 'Prepare governance review package; hold all runtime dispatch until human approval.';
+      ? `Prepare governance review package; ${planned.tool} remains planned until governance approval.`
+      : 'Prepare governance review package; hold all runtime dispatch until governance approval.';
   }
   if (finalAgentState === 'EXECUTION_QUEUED' || finalAgentState === 'AUTO_EXECUTION_APPROVED') {
     const runtime = tools.find(

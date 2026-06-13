@@ -49,8 +49,30 @@ function isQuerySafe(publicQuery: string): boolean {
   return !UNSAFE_QUERY_PATTERNS.some((pattern) => pattern.test(trimmed));
 }
 
+function kycEnrichmentSummary(entity: string): string {
+  return `Mock public enrichment completed for ${entity} using public-only context. No private KYC data was transmitted.`;
+}
+
 function buildMockFindings(publicQuery: string, intent: InferredIntent): PublicEnrichmentFinding[] {
   const entity = publicQuery.trim();
+
+  if (intent === 'CREDIT_KYC_PRECHECK') {
+    return [
+      {
+        title: 'Public company profile signal',
+        sourceType: 'company_registry',
+        summary: `Mock registry footprint for ${entity} using public-only employer context.`,
+        riskSignal: 'UNKNOWN',
+      },
+      {
+        title: 'Public risk/news signal',
+        sourceType: 'news',
+        summary: `Mock open-web scan for ${entity} returned no immediate adverse public media.`,
+        riskSignal: 'LOW',
+      },
+    ];
+  }
+
   const findings: PublicEnrichmentFinding[] = [
     {
       title: `${entity} — public company footprint`,
@@ -193,6 +215,10 @@ export function runPublicEnrichment(input: PublicEnrichmentInput): PublicEnrichm
     }
 
     const findings = buildMockFindings(publicQuery, input.inferredIntent);
+    const kycSummary =
+      input.inferredIntent === 'CREDIT_KYC_PRECHECK'
+        ? kycEnrichmentSummary(publicQuery)
+        : `Mock-safe public-only enrichment performed for ${publicQuery}; no private data transmitted.`;
     return {
       provider: 'BrightData/MCP',
       mode: 'MOCK',
@@ -202,13 +228,17 @@ export function runPublicEnrichment(input: PublicEnrichmentInput): PublicEnrichm
       privateDataRemoved: input.privateDataBlockedFromExternalTools,
       blockedPrivateDataTypes: blockedTypes,
       findings,
-      summary: `Mock-safe public-only enrichment performed for "${publicQuery}"; no private data transmitted.`,
+      summary: kycSummary,
       reason: liveEligible
         ? 'Live BrightData adapter not available; mock-safe public enrichment applied.'
         : 'BrightData credentials or MCP endpoint not configured; mock-safe enrichment applied.',
     };
   } catch {
     const findings = buildMockFindings(publicQuery, input.inferredIntent);
+    const kycSummary =
+      input.inferredIntent === 'CREDIT_KYC_PRECHECK'
+        ? kycEnrichmentSummary(publicQuery)
+        : `Mock-safe public-only enrichment performed for ${publicQuery} after live call fallback.`;
     return {
       provider: 'BrightData/MCP',
       mode: 'MOCK',
@@ -218,7 +248,7 @@ export function runPublicEnrichment(input: PublicEnrichmentInput): PublicEnrichm
       privateDataRemoved: input.privateDataBlockedFromExternalTools,
       blockedPrivateDataTypes: blockedTypes,
       findings,
-      summary: `Mock-safe public-only enrichment performed for "${publicQuery}" after live call fallback.`,
+      summary: kycSummary,
       reason: 'BrightData live call failed safely; mock-safe public enrichment applied.',
     };
   }

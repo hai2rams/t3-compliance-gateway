@@ -158,13 +158,25 @@ The autonomous intake flow returns a structured `publicEnrichment` object from `
 
 `enrichmentPlan` is aligned to `publicEnrichment` (`provider`, `allowed`, `status`, `publicSearchQuery`, `privateDataRemoved`, `summary`). The agentic tool chain BrightData/MCP card reflects `USED` (LIVE), `MOCKED` (mock), or `BLOCKED`.
 
+## TokenRouter model governance
+
+The autonomous intake flow returns a structured `modelRouting` object from `src/services/modelRoutingService.ts`:
+
+- **Modality-aware routing** — TokenRouter selects models based on modality, risk score, privacy boundary, and cost boundary.
+- **Kimi** — text reasoning, summary, and governed judge tasks.
+- **SenseNova** — document, image, and multimodal reasoning.
+- **Gemini** — fallback provider when primary sponsor models are unavailable.
+- **Cost and safety** — blocked or prompt-injection cases use `SKIP_LLM` with `SKIPPED_FOR_POLICY` to avoid unnecessary model calls.
+
+`tokenRouterDecision` remains backward compatible (`route`, `primaryProvider`, `secondaryProviders`) and is sourced from `modelRouting`. The agentic tool chain TokenRouter, Kimi, and SenseNova cards reflect `USED` (LIVE) or `MOCKED` (mock-safe).
+
 ## Security & governance notes
 
 - **Never commit** `.env`, `.env.local`, or API keys. Use `.env.example` placeholders only.
 - Terminal 3 secrets map: values readable inside TEE contract, not exposed via gateway list endpoints.
 - Policy engine: finance / government / procurement packs; global PII export block.
-- `DENY` → runtime `BLOCKED`; `REVIEW` → `AWAITING_APPROVAL` — no execution until human approval.
-- AI output is advisory; regulated decisions require human verification.
+- `DENY` → runtime `BLOCKED`; `REVIEW` → `AWAITING_APPROVAL` — no execution until governance approval.
+- AI output is advisory; regulated decisions require governance verification.
 
 ## Future work
 

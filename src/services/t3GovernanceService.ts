@@ -24,7 +24,7 @@ export type AgentGovernanceInput = {
 };
 
 const MOCK_AUDIT_PREFIX =
-  'Mock-safe T3 governance proof generated. Live T3 contract can be enabled with T3 credentials.';
+  'Mock-safe Terminal 3 governance proof generated. Live T3 can be enabled with credentials.';
 
 function hashPayload(label: string, payload: Record<string, unknown>): string {
   const digest = createHash('sha256')
@@ -140,12 +140,16 @@ export async function evaluateAgentGovernance(
     auditSummary = `${MOCK_AUDIT_PREFIX}`;
   }
 
-  const identityStatus: T3Governance['identityStatus'] =
+  let identityStatus: T3Governance['identityStatus'] =
     mode === 'LIVE' && trust.status === 'VERIFIED'
       ? 'VERIFIED'
       : trust.status === 'FAILED'
         ? 'DENIED'
         : 'MOCK_VERIFIED';
+
+  if (mode !== 'LIVE' && identityStatus !== 'DENIED') {
+    identityStatus = 'MOCK_VERIFIED';
+  }
 
   const identityDenied = identityStatus === 'DENIED';
   const contractMode: T3Governance['contractMode'] =
@@ -187,7 +191,10 @@ export async function evaluateAgentGovernance(
   const decisionHash = hashPayload('t3-governance-decision', decisionPayload);
   const executionPlanHash = hashPayload('t3-execution-plan', executionPayload);
 
-  const fullAuditSummary = `${auditSummary} Governance decision ${governanceDecision} for ${input.inferredIntent} under ${input.policyId}.`;
+  const fullAuditSummary =
+    mode === 'MOCK'
+      ? MOCK_AUDIT_PREFIX
+      : `${auditSummary} Governance decision ${governanceDecision} for ${input.inferredIntent} under ${input.policyId}.`;
 
   return {
     provider: 'Terminal 3',
@@ -256,6 +263,9 @@ export function terminal3ToolReason(t3Governance: T3Governance): string {
     return `BLOCKED: ${t3Governance.governanceDecision} under ${t3Governance.contractMode}.`;
   }
   const statusWord = t3Governance.mode === 'LIVE' ? 'USED' : 'MOCKED';
+  if (t3Governance.mode !== 'LIVE') {
+    return `${statusWord}: ${MOCK_AUDIT_PREFIX}`;
+  }
   return `${statusWord}: ${t3Governance.governanceDecision} under ${t3Governance.contractMode} (${t3Governance.permissionStatus}).`;
 }
 
