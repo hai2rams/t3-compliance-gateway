@@ -48,7 +48,7 @@ export function routeRuntimeExecution(
       const nosana = routeBatchCompute(request);
       return {
         provider: 'Nosana',
-        status: nosana.status.startsWith('MOCK') ? 'MOCK_ROUTED' : 'ROUTED',
+        status: nosana.status.startsWith('MOCK') ? 'QUEUED_MOCK' : 'ROUTED',
         jobClass: 'HEAVY_BATCH_GPU',
         reason: 'Approved heavy/batch workload can be dispatched to Nosana compute.',
         executionId: nosana.jobId,
