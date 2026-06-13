@@ -18,6 +18,15 @@ export function evaluateFinancePolicy(
     };
   }
 
+  if (request.actionType === 'CREDIT_KYC_PRECHECK') {
+    return {
+      decision: 'REVIEW',
+      policyId: 'FIN-KYC-HOLD-001',
+      reasoning:
+        'Regulated KYC precheck is allowed; sensitive identity documents require human review hold.',
+    };
+  }
+
   const authorizedBatchRole =
     request.userRole === 'risk_analyst' || request.userRole === 'admin';
   const batchComputeContext =

@@ -19,6 +19,12 @@ import {
   getComplianceAuditLog,
   recordComplianceCheck,
 } from './services/auditLog.js';
+import { AgentIntakeRequestSchema } from './schemas/agentIntakeSchema.js';
+import {
+  runAgentIntake,
+  DEFAULT_KYC_SAMPLE_REQUEST,
+} from './agents/agentController.js';
+import { getAgentIntakeAuditLog } from './services/agentAuditLog.js';
 
 const InitializeBodySchema = z.object({
   entries: z.record(z.string(), z.string()).optional(),
@@ -126,6 +132,41 @@ app.post('/api/v1/compliance/check', async (req, res) => {
 
 app.get('/api/v1/compliance/audit-log', (_req, res) => {
   res.json(getComplianceAuditLog());
+});
+
+/**
+ * Autonomous regulated intake agent — classifies case, governs, judges, plans execution.
+ */
+app.post('/api/v1/agent/intake', async (req, res) => {
+  const parsed = AgentIntakeRequestSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({
+      error: 'Bad Request',
+      message: 'Invalid agent intake payload',
+      details: parsed.error.flatten(),
+    });
+    return;
+  }
+
+  try {
+    const response = await runAgentIntake(parsed.data);
+    res.status(200).json(response);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    res.status(500).json({ error: 'AgentIntakeFailed', message });
+  }
+});
+
+app.get('/api/v1/agent/intake/sample', (_req, res) => {
+  res.json({
+    description: 'Default Credit/KYC precheck sample request',
+    request: DEFAULT_KYC_SAMPLE_REQUEST,
+    endpoint: 'POST /api/v1/agent/intake',
+  });
+});
+
+app.get('/api/v1/agent/intake/audit-log', (_req, res) => {
+  res.json(getAgentIntakeAuditLog());
 });
 
 /**
