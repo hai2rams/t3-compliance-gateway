@@ -51,6 +51,23 @@ export type AgentTraceStep = {
   summary: string;
 };
 
+export type ToolChainStatus = 'USED' | 'MOCKED' | 'PLANNED' | 'BLOCKED' | 'SKIPPED';
+
+export type ToolChainEntry = {
+  tool: string;
+  role: string;
+  status: ToolChainStatus;
+  reason: string;
+};
+
+export type ToolOrchestration = {
+  strategy: 'GOVERNED_AUTONOMOUS_TOOL_CHAIN';
+  tools: ToolChainEntry[];
+  nextToolAction: string;
+  blockedToolActions: string[];
+  auditSummary: string;
+};
+
 export type AgentIntakeResponse = {
   missionId: string;
   agentId: string;
@@ -64,6 +81,7 @@ export type AgentIntakeResponse = {
   enrichmentPlan: Record<string, unknown>;
   llmJudge: Record<string, unknown>;
   executionPlan: Record<string, unknown>;
+  toolOrchestration: ToolOrchestration;
   finalAgentState: FinalAgentState;
   timestamp: string;
 };

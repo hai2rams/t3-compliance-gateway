@@ -19,6 +19,10 @@ import { verifyAgentTrust } from '../adapters/terminal3Adapter.js';
 import { mapIntentToWorkflow, planExecution } from '../services/executionPlanner.js';
 import { executeRuntimePlan } from '../execution/runtimeExecutor.js';
 import { recordAgentIntake } from '../services/agentAuditLog.js';
+import {
+  orchestrateAgentTools,
+  orchestrateBlockedTools,
+} from './agentToolOrchestrator.js';
 
 function createMissionId(): string {
   return `mission_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -82,7 +86,23 @@ function buildBlockedResponse(
   intake: ReturnType<typeof runRegulatedIntakeAgent>,
   trace: AgentTraceStep[],
   reason: string,
+  options: { promptInjectionBlocked?: boolean; intentControlBlocked?: boolean } = {},
 ): AgentIntakeResponse {
+  const dataBoundary = buildAgentDataBoundary(request.content);
+  const toolOrchestration = orchestrateBlockedTools(missionId, {
+    intent: intake.inferredIntent,
+    modalities: intake.modalities,
+    promptInjectionBlocked: Boolean(options.promptInjectionBlocked),
+    intentControlBlocked: Boolean(options.intentControlBlocked),
+    blockReason: reason,
+    trust: { status: 'DENIED', provider: 'Terminal 3' },
+    tokenRouterDecision: { route: 'BLOCKED_BY_POLICY' },
+    dataBoundary,
+    enrichmentAllowed: false,
+    publicSearchQuery: '',
+    enrichmentResult: { status: 'BLOCKED' },
+  });
+
   return {
     missionId,
     agentId: request.agentId,
@@ -97,10 +117,11 @@ function buildBlockedResponse(
       routeReason: reason,
     },
     agentPassport: { status: 'DENIED', reason },
-    dataBoundary: buildAgentDataBoundary(request.content),
+    dataBoundary,
     enrichmentPlan: { allowed: false, publicSearchQuery: '', status: 'BLOCKED' },
     llmJudge: { verdict: 'AUTO_BLOCKED_BY_POLICY', summary: reason },
     executionPlan: { status: 'NOT_PLANNED', targetRuntime: 'NONE' },
+    toolOrchestration,
     finalAgentState: 'AUTO_BLOCKED_BY_POLICY',
     timestamp: new Date().toISOString(),
   };
@@ -145,6 +166,7 @@ export async function runAgentIntake(request: AgentIntakeRequest): Promise<Agent
       intake,
       trace.build(),
       'Prompt injection guard blocked untrusted content instructions.',
+      { promptInjectionBlocked: true },
     );
     recordAgentIntake(request, blocked);
     return blocked;
@@ -163,6 +185,7 @@ export async function runAgentIntake(request: AgentIntakeRequest): Promise<Agent
       intake,
       trace.build(),
       'Intent not in agent control map.',
+      { intentControlBlocked: true },
     );
     recordAgentIntake(request, blocked);
     return blocked;
@@ -266,6 +289,33 @@ export async function runAgentIntake(request: AgentIntakeRequest): Promise<Agent
     runtime.note,
   );
 
+  const toolOrchestration = orchestrateAgentTools({
+    missionId,
+    intent: intake.inferredIntent,
+    modalities: intake.modalities,
+    finalAgentState: judge.verdict,
+    promptInjectionBlocked: false,
+    intentControlBlocked: false,
+    trust,
+    tokenRouterDecision,
+    dataBoundary,
+    enrichmentAllowed: enrichmentSpec.allowed,
+    publicSearchQuery: enrichmentSpec.publicQuery,
+    enrichmentResult,
+    kimiStatus: compliance.kimi.status,
+    senseNovaStatus: compliance.senseNova?.status,
+    judge,
+    executionSpec,
+    runtime,
+  });
+
+  trace.add(
+    'ToolOrchestratorAgent',
+    'COMPOSE_TOOL_CHAIN',
+    judge.verdict === 'AUTO_BLOCKED_BY_POLICY' ? 'BLOCKED' : 'COMPLETED',
+    toolOrchestration.nextToolAction,
+  );
+
   const response: AgentIntakeResponse = {
     missionId,
     agentId: request.agentId,
@@ -326,6 +376,7 @@ export async function runAgentIntake(request: AgentIntakeRequest): Promise<Agent
       executed: runtime.executed,
       runtimeStatus: runtime.status,
     },
+    toolOrchestration,
     finalAgentState: judge.verdict,
     timestamp: new Date().toISOString(),
   };

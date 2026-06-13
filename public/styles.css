@@ -677,3 +677,85 @@ td.review { color: var(--review); }
   text-align: center;
   padding: 1.25rem;
 }
+
+/* ─── Agentic tool chain ─── */
+.tool-chain-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem 1.1rem;
+  margin-bottom: 0.85rem;
+}
+
+.tool-chain-heading {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.tool-chain-next {
+  margin: 0 0 0.85rem;
+  font-size: 0.88rem;
+  color: var(--accent);
+}
+
+.tool-chain-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.65rem;
+  margin-bottom: 0.75rem;
+}
+
+.tool-chain-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--allow);
+  border-radius: 8px;
+  padding: 0.65rem 0.75rem;
+}
+
+.tool-chain-card.tool-planned { border-left-color: var(--hold); }
+.tool-chain-card.tool-mocked { border-left-color: var(--accent); }
+.tool-chain-card.tool-blocked { border-left-color: var(--deny); }
+.tool-chain-card.tool-skipped { border-left-color: var(--muted); opacity: 0.8; }
+
+.tool-chain-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.tool-chain-card-head strong {
+  font-size: 0.82rem;
+}
+
+.tool-chain-status {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.tool-chain-role {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-transform: capitalize;
+}
+
+.tool-chain-reason {
+  margin: 0.35rem 0 0;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.tool-chain-audit {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--muted);
+}

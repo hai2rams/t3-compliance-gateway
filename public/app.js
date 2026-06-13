@@ -80,6 +80,8 @@ const agentContent = document.getElementById('agent-content');
 const uploadZone = document.getElementById('upload-zone');
 const traceTimeline = document.getElementById('trace-timeline');
 const sponsorRow = document.getElementById('sponsor-row');
+const toolChainSection = document.getElementById('tool-chain-section');
+const toolChainGrid = document.getElementById('tool-chain-grid');
 const developerPayload = document.getElementById('developer-payload');
 
 let lastAutopilotRequest = null;
@@ -211,6 +213,69 @@ function renderOutcome(data) {
   document.getElementById('out-exec-status').textContent = execStatus;
 }
 
+function toolStatusClass(status) {
+  if (status === 'BLOCKED') return 'tool-blocked';
+  if (status === 'SKIPPED') return 'tool-skipped';
+  if (status === 'PLANNED') return 'tool-planned';
+  if (status === 'MOCKED') return 'tool-mocked';
+  return 'tool-used';
+}
+
+function renderToolOrchestration(data) {
+  const orch = data.toolOrchestration;
+  if (!orch?.tools?.length) {
+    toolChainSection.hidden = true;
+    return;
+  }
+
+  toolChainSection.hidden = false;
+  document.getElementById('tool-chain-next').textContent =
+    orch.nextToolAction || '—';
+  document.getElementById('tool-chain-audit').textContent =
+    orch.auditSummary || '—';
+
+  toolChainGrid.innerHTML = orch.tools
+    .map(
+      (entry) => `
+    <article class="tool-chain-card ${toolStatusClass(entry.status)}">
+      <div class="tool-chain-card-head">
+        <strong>${entry.tool}</strong>
+        <span class="tool-chain-status">${entry.status}</span>
+      </div>
+      <p class="tool-chain-role">${entry.role.replace(/_/g, ' ')}</p>
+      <p class="tool-chain-reason">${entry.reason}</p>
+    </article>`,
+    )
+    .join('');
+
+  const statusByTool = Object.fromEntries(orch.tools.map((t) => [t.tool, t]));
+
+  if (statusByTool['TokenRouter']) {
+    document.getElementById('card-tr-reason').textContent =
+      `${statusByTool['TokenRouter'].status}: ${statusByTool['TokenRouter'].reason}`;
+  }
+  if (statusByTool['Terminal 3']) {
+    document.getElementById('card-t3-audit').textContent =
+      `${statusByTool['Terminal 3'].status} — ${statusByTool['Terminal 3'].reason}`;
+  }
+  if (statusByTool['BrightData/MCP']) {
+    document.getElementById('card-bd-status').textContent =
+      `${statusByTool['BrightData/MCP'].status}: ${statusByTool['BrightData/MCP'].reason}`;
+  }
+  if (statusByTool.Daytona || statusByTool.Nosana || statusByTool.VideoDB) {
+    const runtime =
+      statusByTool.Daytona?.status !== 'SKIPPED'
+        ? statusByTool.Daytona
+        : statusByTool.Nosana?.status !== 'SKIPPED'
+          ? statusByTool.Nosana
+          : statusByTool.VideoDB;
+    if (runtime) {
+      document.getElementById('card-ex-dispatch').textContent =
+        `${runtime.status}: ${runtime.reason}`;
+    }
+  }
+}
+
 function renderSponsorCards(data) {
   sponsorRow.hidden = false;
 
@@ -255,6 +320,8 @@ function renderSponsorCards(data) {
   document.getElementById('card-audit-recorded').textContent = data.timestamp
     ? new Date(data.timestamp).toLocaleString()
     : 'Recorded';
+
+  renderToolOrchestration(data);
 }
 
 function renderDeveloperPayload() {
@@ -285,6 +352,7 @@ async function runAutopilot() {
   setAutopilotStatus('Running autonomous intake…');
   animateTraceLoading();
   sponsorRow.hidden = true;
+  toolChainSection.hidden = true;
 
   try {
     const res = await fetch('/api/v1/agent/intake', {
