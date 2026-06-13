@@ -75,8 +75,10 @@ function toComplianceRequest(
     externalSharing: false,
     amount: intake.amount,
     jobMode: workflowType === 'BULK_BATCH_JOB' ? 'BATCH' : 'INTERACTIVE',
-    estimatedRecords: workflowType === 'BULK_BATCH_JOB' ? 20_000 : 1,
-    needsGpu: intake.inferredIntent === 'BATCH_RISK_SCAN',
+    estimatedRecords:
+      request.hints?.estimatedRecords ??
+      (workflowType === 'BULK_BATCH_JOB' ? 20_000 : 1),
+    needsGpu: request.hints?.needsGpu ?? intake.inferredIntent === 'BATCH_RISK_SCAN',
     needsVideo: intake.modalities.includes('VIDEO'),
     needsWebData: intake.modalities.includes('WEB_RESEARCH'),
   };
@@ -119,7 +121,11 @@ async function buildBlockedResponse(
   reason: string,
   options: { promptInjectionBlocked?: boolean; intentControlBlocked?: boolean } = {},
 ): Promise<AgentIntakeResponse> {
-  const dataBoundary = buildAgentDataBoundary(request.content);
+  const dataBoundary = buildAgentDataBoundary(request.content, {
+    hasBatch: request.hints?.hasBatch,
+    inferredIntent: intake.inferredIntent,
+    selectedWorkflow: intake.selectedWorkflow,
+  });
   const policyId = options.promptInjectionBlocked
     ? 'PROMPT-INJECTION-GUARD'
     : 'INTENT-CONTROL-BLOCK';
@@ -353,7 +359,11 @@ export async function runAgentIntake(request: AgentIntakeRequest): Promise<Agent
     `Agent passport ${trust.status}.`,
   );
 
-  const dataBoundary = buildAgentDataBoundary(request.content);
+  const dataBoundary = buildAgentDataBoundary(request.content, {
+    hasBatch: request.hints?.hasBatch,
+    inferredIntent: intake.inferredIntent,
+    selectedWorkflow: intake.selectedWorkflow,
+  });
   trace.add(
     'DataBoundaryAgent',
     'PROTECT_PRIVATE_DATA',

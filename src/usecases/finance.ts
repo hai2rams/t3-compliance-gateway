@@ -3,6 +3,7 @@ import type {
   ComplianceDecision,
   SensitiveDataResult,
 } from '../schemas/complianceCheckSchema.js';
+import { isAnonymizedBatchEligibleForPolicy } from '../services/anonymizedBatchGuard.js';
 
 export function evaluateFinancePolicy(
   request: ComplianceCheckRequest,
@@ -29,6 +30,20 @@ export function evaluateFinancePolicy(
 
   const authorizedBatchRole =
     request.userRole === 'risk_analyst' || request.userRole === 'admin';
+
+  if (
+    authorizedBatchRole &&
+    !request.externalSharing &&
+    isAnonymizedBatchEligibleForPolicy(request, sensitiveData)
+  ) {
+    return {
+      decision: 'ALLOW',
+      policyId: 'FIN-BATCH-ANON-ALLOW-001',
+      reasoning:
+        'Anonymized internal batch analysis is allowed for authorized risk users and can be routed to approved compute.',
+    };
+  }
+
   const batchComputeContext =
     request.jobMode === 'BATCH' ||
     (request.estimatedRecords ?? 0) >= 5_000 ||
@@ -40,6 +55,7 @@ export function evaluateFinancePolicy(
     authorizedBatchRole &&
     !request.containsPii &&
     !request.externalSharing &&
+    !sensitiveData.detected &&
     (request.dataSensitivity === 'LOW' || request.dataSensitivity === 'MEDIUM') &&
     batchComputeContext
   ) {

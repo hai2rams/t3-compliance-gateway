@@ -7,6 +7,8 @@ export const AgentIntakeHintsSchema = z.object({
   hasVideo: z.boolean().optional().default(false),
   hasBatch: z.boolean().optional().default(false),
   needsPublicWeb: z.boolean().optional().default(false),
+  needsGpu: z.boolean().optional(),
+  estimatedRecords: z.number().nonnegative().optional(),
 });
 
 export const AgentIntakeRequestSchema = z.object({

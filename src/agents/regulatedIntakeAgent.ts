@@ -3,7 +3,11 @@ import type {
   InferredIntent,
   Modality,
 } from '../schemas/agentIntakeSchema.js';
-import { scanSensitiveData } from '../services/sensitiveDataFilter.js';
+import {
+  isDeclaredAnonymizedBatchInput,
+  scanSensitiveDataForIntake,
+  type AnonymizedBatchContext,
+} from '../services/anonymizedBatchGuard.js';
 
 export type IntakeAnalysis = {
   modalities: Modality[];
@@ -34,7 +38,7 @@ export function runRegulatedIntakeAgent(request: AgentIntakeRequest): IntakeAnal
     detectedModality,
     inferredIntent,
     selectedWorkflow,
-    containsPii: detectPii(content, hints),
+    containsPii: detectPii(content, hints, inferredIntent),
     amount,
   };
 }
@@ -72,6 +76,12 @@ function detectModalities(
   }
   if (hints.needsPublicWeb || /\b(employer|company name|public web)\b/i.test(content)) {
     modalities.add('WEB_RESEARCH');
+  }
+
+  if (hints.hasBatch || modalities.has('BATCH')) {
+    modalities.delete('IMAGE');
+    modalities.delete('DOCUMENT');
+    modalities.delete('MIXED');
   }
 
   if (modalities.size > 2) modalities.add('MIXED');
@@ -131,49 +141,68 @@ function mapWorkflow(intent: InferredIntent): string {
   }
 }
 
-function isDeclaredAnonymizedBatch(
-  content: string,
-  hints: NonNullable<AgentIntakeRequest['hints']>,
-): boolean {
-  if (!hints.hasBatch && !/\bbatch\b/i.test(content)) return false;
-  return (
-    /\banonymized\b/i.test(content) &&
-    /\bno\s+(?:names|account|emails?|phone|raw\s+pii)/i.test(content)
-  );
-}
-
 function detectPii(
   content: string,
   hints: NonNullable<AgentIntakeRequest['hints']>,
+  inferredIntent?: InferredIntent,
 ): boolean {
-  if (isDeclaredAnonymizedBatch(content, hints)) return false;
-  if (/\b(passport|salary|bank statement|account|ssn|national id)\b/i.test(content)) {
+  if (
+    isDeclaredAnonymizedBatchInput(content, {
+      hasBatch: hints.hasBatch,
+      inferredIntent,
+    })
+  ) {
+    return false;
+  }
+
+  if (/\b(passport|salary|bank statement)\b/i.test(content)) {
     return true;
   }
-  return scanSensitiveData(content, true).detected;
+
+  return scanSensitiveDataForIntake(content, true, {
+    hasBatch: hints.hasBatch,
+    inferredIntent,
+    selectedWorkflow: inferredIntent === 'BATCH_RISK_SCAN' ? 'BATCH_RISK_SCAN' : undefined,
+  }).detected;
 }
 
-export function buildAgentDataBoundary(content: string): {
+export function buildAgentDataBoundary(
+  content: string,
+  context: AnonymizedBatchContext = {},
+): {
   detected: boolean;
   types: string[];
   redactedPreview: string;
   privateBlockedFromExternal: boolean;
 } {
-  const anonymizedBatch =
-    /\banonymized\b/i.test(content) &&
-    /\bno\s+(?:names|account|emails?|phone|raw\s+pii)/i.test(content) &&
-    /\bbatch\b/i.test(content);
-  const base = scanSensitiveData(content, !anonymizedBatch);
+  if (isDeclaredAnonymizedBatchInput(content, context)) {
+    return {
+      detected: false,
+      types: [],
+      redactedPreview: content.slice(0, 200),
+      privateBlockedFromExternal: false,
+    };
+  }
+
+  const base = scanSensitiveDataForIntake(content, true, context);
   const types = new Set<string>(base.types);
 
-  if (/\bsalary\s+slip\b/i.test(content)) types.add('SALARY_DOCUMENT');
-  if (/\bbank\s+statement\b/i.test(content)) types.add('BANK_ACCOUNT');
-  if (/\bpassport\b/i.test(content)) {
-    types.add('PASSPORT_ID');
-    types.delete('CONFIDENTIAL_KEYWORD');
-  }
-  if (/\bsalary\b/i.test(content) && !types.has('SALARY_DOCUMENT')) {
-    types.add('FINANCIAL_DOCUMENT');
+  const isBatchRisk =
+    context.inferredIntent === 'BATCH_RISK_SCAN' ||
+    context.hasBatch === true ||
+    context.selectedWorkflow === 'BATCH_RISK_SCAN' ||
+    context.selectedWorkflow === 'BULK_BATCH_JOB';
+
+  if (!isBatchRisk) {
+    if (/\bsalary\s+slip\b/i.test(content)) types.add('SALARY_DOCUMENT');
+    if (/\bbank\s+statement\b/i.test(content)) types.add('BANK_ACCOUNT');
+    if (/\bpassport\b/i.test(content)) {
+      types.add('PASSPORT_ID');
+      types.delete('CONFIDENTIAL_KEYWORD');
+    }
+    if (/\bsalary\b/i.test(content) && !types.has('SALARY_DOCUMENT')) {
+      types.add('FINANCIAL_DOCUMENT');
+    }
   }
 
   const ordered = [

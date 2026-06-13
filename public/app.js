@@ -36,7 +36,7 @@ const AGENT_SAMPLES = {
       agentId: 'regulated-intake-agent',
       goal: 'Run an anonymized batch risk scan.',
       content:
-        'Run anonymized anomaly scan across 20,000 transaction records. Dataset has no names, account numbers, emails, phone numbers, or raw PII. Need GPU/batch compute for risk scoring.',
+        'Run anonymized anomaly scan across 20,000 tokenized transaction records. The dataset contains no raw personal identifiers and no raw PII. Need GPU batch compute for risk scoring.',
       hints: {
         hasFile: false,
         hasImage: false,
@@ -44,6 +44,8 @@ const AGENT_SAMPLES = {
         hasVideo: false,
         hasBatch: true,
         needsPublicWeb: false,
+        needsGpu: true,
+        estimatedRecords: 20000,
       },
     },
   },

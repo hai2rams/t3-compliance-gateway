@@ -52,7 +52,11 @@ function sortTypes(types: Set<SensitiveDataType>): SensitiveDataType[] {
   );
 }
 
-export function scanSensitiveData(content: string, containsPiiFlag: boolean): SensitiveDataResult {
+export function scanSensitiveData(
+  content: string,
+  containsPiiFlag: boolean,
+  options: { batchRiskScan?: boolean } = {},
+): SensitiveDataResult {
   const types = new Set<SensitiveDataType>();
   let redactedPreview = content;
 
@@ -65,12 +69,16 @@ export function scanSensitiveData(content: string, containsPiiFlag: boolean): Se
   }
 
   // Passport mentioned without a structured ID still signals confidential PII in claim context.
-  if (/\bpassport\b/i.test(content) && !types.has('PASSPORT_ID')) {
+  if (
+    !options.batchRiskScan &&
+    /\bpassport\b/i.test(content) &&
+    !types.has('PASSPORT_ID')
+  ) {
     types.add('CONFIDENTIAL_KEYWORD');
     redactedPreview = redactedPreview.replace(/\bpassport\b/gi, redactMatch('CONFIDENTIAL_KEYWORD'));
   }
 
-  if (containsPiiFlag && types.size === 0) {
+  if (containsPiiFlag && types.size === 0 && !options.batchRiskScan) {
     types.add('CONFIDENTIAL_KEYWORD');
   }
 

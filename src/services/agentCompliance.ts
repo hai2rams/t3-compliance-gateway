@@ -6,7 +6,7 @@ import { verifyAgentTrust } from '../adapters/terminal3Adapter.js';
 import { routeModel } from '../adapters/tokenRouterAdapter.js';
 import { runLlmReasoning } from '../adapters/geminiAdapter.js';
 import { scanDocument } from '../adapters/senseNovaAdapter.js';
-import { scanSensitiveData } from './sensitiveDataFilter.js';
+import { scanSensitiveDataForIntake } from './anonymizedBatchGuard.js';
 import { calculateRiskScore } from './riskScoring.js';
 import { evaluatePolicy } from './policyEngine.js';
 import { createAuditId } from './auditLog.js';
@@ -22,7 +22,17 @@ export async function runComplianceCheck(
     workflowType: workflow.workflowType,
   };
 
-  const sensitiveData = scanSensitiveData(enrichedRequest.content, enrichedRequest.containsPii);
+  const sensitiveData = scanSensitiveDataForIntake(
+    enrichedRequest.content,
+    enrichedRequest.containsPii,
+    {
+      hasBatch:
+        enrichedRequest.jobMode === 'BATCH' ||
+        enrichedRequest.workflowType === 'BULK_BATCH_JOB',
+      inferredIntent: enrichedRequest.actionType,
+      selectedWorkflow: enrichedRequest.workflowType,
+    },
+  );
   const riskScore = calculateRiskScore(enrichedRequest, sensitiveData);
   const policy = evaluatePolicy(enrichedRequest, riskScore, sensitiveData);
   const route = routeModel({
