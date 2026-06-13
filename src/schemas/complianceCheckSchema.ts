@@ -89,7 +89,7 @@ export type GeminiReasoningResult = {
 
 export type RuntimeRoutingResult = {
   provider: 'Daytona' | 'Nosana' | 'VideoDB' | 'NONE';
-  status: 'ROUTED' | 'MOCK_ROUTED' | 'BLOCKED' | 'AWAITING_APPROVAL';
+  status: 'ROUTED' | 'MOCK_ROUTED' | 'QUEUED_MOCK' | 'BLOCKED' | 'AWAITING_APPROVAL';
   jobClass: string;
   reason: string;
   executionId?: string;
