@@ -147,6 +147,17 @@ The autonomous intake flow (`POST /api/v1/agent/intake`) returns a structured `t
 
 `agentPassport` is aligned to `t3Governance` (`didStatus`, `permissionScope`, `blockedCapabilities`). The agentic tool chain Terminal 3 card reflects `USED` (LIVE) or `MOCKED` (mock envelope).
 
+## BrightData / MCP public enrichment
+
+The autonomous intake flow returns a structured `publicEnrichment` object from `src/services/publicEnrichmentService.ts`:
+
+- **Governed step** — external enrichment runs only after data-boundary protection and Terminal 3 governance checks.
+- **Private data stripped** — passport, NRIC/SSN, bank, salary, phone, email, and medical content never leave the gateway; only sanitized public terms (employer, vendor, company name) are sent.
+- **Mock-safe by default** — when `MOCK_MODE=true` or BrightData credentials / MCP endpoint are missing, returns `mode: MOCK` and `status: MOCK_COMPLETED` with deterministic mock findings.
+- **Live-ready** — when `BRIGHTDATA_API_KEY` or `BRIGHTDATA_MCP_URL` is configured and `MOCK_MODE` is not true, the existing adapter may return `mode: LIVE` / `status: COMPLETED`; live failures fall back to mock without failing the intake request.
+
+`enrichmentPlan` is aligned to `publicEnrichment` (`provider`, `allowed`, `status`, `publicSearchQuery`, `privateDataRemoved`, `summary`). The agentic tool chain BrightData/MCP card reflects `USED` (LIVE), `MOCKED` (mock), or `BLOCKED`.
+
 ## Security & governance notes
 
 - **Never commit** `.env`, `.env.local`, or API keys. Use `.env.example` placeholders only.
@@ -157,7 +168,6 @@ The autonomous intake flow (`POST /api/v1/agent/intake`) returns a structured `t
 
 ## Future work
 
-- BrightData/MCP adapter implementation and public-enrichment UI card
 - Autonomous intake from file upload (multipart) with modality auto-detection
 - Agent passport signing (`x-t3-agent-id` / signature validation)
 - Persistent audit store (replace in-memory ledger)

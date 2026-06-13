@@ -4,7 +4,11 @@ import type { TokenRouterAgentDecision } from '../agents/tokenRouterAgent.js';
 import type { LlmJudgeResult } from '../agents/llmJudgeAgent.js';
 import type { ExecutionSpec } from '../execution/executionSpec.js';
 import type { RuntimeExecutionResult } from '../execution/executionSpec.js';
-import type { BrightDataEnrichmentResult } from '../adapters/brightDataAdapter.js';
+import type { PublicEnrichment } from '../schemas/agentIntakeSchema.js';
+import {
+  brightDataToolReason,
+  brightDataToolStatus,
+} from '../services/publicEnrichmentService.js';
 import type { T3Governance } from '../schemas/agentIntakeSchema.js';
 import {
   terminal3ToolReason,
@@ -36,7 +40,8 @@ export type ToolDecisionInput = {
   dataBoundary: { detected: boolean; privateBlockedFromExternal: boolean; types: string[] };
   enrichmentAllowed: boolean;
   publicSearchQuery: string;
-  enrichmentResult?: BrightDataEnrichmentResult | { status: string };
+  enrichmentResult?: { status: string };
+  publicEnrichment?: PublicEnrichment;
   kimiStatus?: string;
   senseNovaStatus?: string;
   judge: LlmJudgeResult | { verdict: FinalAgentState; summary: string };
@@ -250,6 +255,16 @@ function resolveSenseNova(input: ToolDecisionInput): ToolChainEntry {
 }
 
 function resolveBrightData(input: ToolDecisionInput): ToolChainEntry {
+  if (input.publicEnrichment) {
+    const status = brightDataToolStatus(input.publicEnrichment);
+    return {
+      tool: 'BrightData/MCP',
+      role: 'public_web_enrichment',
+      status,
+      reason: brightDataToolReason(input.publicEnrichment),
+    };
+  }
+
   if (input.promptInjectionBlocked || input.intentControlBlocked) {
     return {
       tool: 'BrightData/MCP',

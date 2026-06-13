@@ -7,7 +7,10 @@ export type BrightDataEnrichmentResult = {
 };
 
 function isMockMode(): boolean {
-  return process.env.MOCK_MODE === 'true' || !process.env.BRIGHTDATA_API_KEY?.trim();
+  const hasCredentials =
+    Boolean(process.env.BRIGHTDATA_API_KEY?.trim()) ||
+    Boolean(process.env.BRIGHTDATA_MCP_URL?.trim());
+  return process.env.MOCK_MODE === 'true' || !hasCredentials;
 }
 
 export function enrichPublicWeb(publicQuery: string): BrightDataEnrichmentResult {

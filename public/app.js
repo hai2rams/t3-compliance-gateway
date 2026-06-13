@@ -337,8 +337,8 @@ function renderSponsorCards(data) {
   const tr = data.tokenRouterDecision || {};
   const passport = data.agentPassport || {};
   const enrich = data.enrichmentPlan || {};
+  const publicEnrichment = data.publicEnrichment || {};
   const exec = data.executionPlan || {};
-  const bright = enrich.brightData || {};
 
   document.getElementById('card-tr-route').textContent = tr.route || '—';
   document.getElementById('card-tr-primary').textContent = tr.primaryProvider || '—';
@@ -360,13 +360,34 @@ function renderSponsorCards(data) {
       passport.mode === 'LIVE' ? 'Live governance proof' : 'Mock-safe governance proof';
   }
 
-  const enrichAllowed = enrich.allowed ? 'Public-only enrichment allowed' : 'Enrichment blocked';
-  document.getElementById('card-bd-enrichment').textContent = enrichAllowed;
-  document.getElementById('card-bd-query').textContent = enrich.publicSearchQuery || '—';
-  document.getElementById('card-bd-private').textContent = enrich.privateDataBlocked
-    ? 'Private data stripped from external tools'
-    : 'No private data detected';
-  document.getElementById('card-bd-status').textContent = bright.status || enrich.status || '—';
+  if (publicEnrichment.provider) {
+    document.getElementById('card-bd-mode').textContent = publicEnrichment.mode || '—';
+    document.getElementById('card-bd-status').textContent = publicEnrichment.status || '—';
+    document.getElementById('card-bd-query').textContent =
+      publicEnrichment.publicSearchQuery || '—';
+    document.getElementById('card-bd-private-removed').textContent =
+      publicEnrichment.privateDataRemoved ? 'Yes' : 'No';
+    document.getElementById('card-bd-blocked-types').textContent =
+      (publicEnrichment.blockedPrivateDataTypes || []).join(', ') || '—';
+    document.getElementById('card-bd-summary').textContent = publicEnrichment.summary || '—';
+    const topFindings = (publicEnrichment.findings || []).slice(0, 2);
+    document.getElementById('card-bd-findings').textContent = topFindings.length
+      ? topFindings.map((f) => `${f.title}: ${f.summary}`).join(' | ')
+      : '—';
+  } else {
+    document.getElementById('card-bd-mode').textContent = enrich.mode || '—';
+    document.getElementById('card-bd-status').textContent = enrich.status || '—';
+    document.getElementById('card-bd-query').textContent = enrich.publicSearchQuery || '—';
+    document.getElementById('card-bd-private-removed').textContent = enrich.privateDataRemoved
+      ? 'Yes'
+      : enrich.privateDataBlocked
+        ? 'Yes'
+        : 'No';
+    document.getElementById('card-bd-blocked-types').textContent =
+      (enrich.blockedPrivateDataTypes || []).join(', ') || '—';
+    document.getElementById('card-bd-summary').textContent = enrich.summary || '—';
+    document.getElementById('card-bd-findings').textContent = '—';
+  }
 
   document.getElementById('card-ex-runtime').textContent = exec.targetRuntime || '—';
   document.getElementById('card-ex-jobclass').textContent = exec.jobClass || '—';

@@ -14,7 +14,10 @@ import { runLlmJudgeAgent } from './llmJudgeAgent.js';
 import { AgentTraceBuilder, detectPromptInjection } from './agentTrace.js';
 import { runComplianceCheck } from '../services/agentCompliance.js';
 import { buildEnrichmentPlan, hintsNeedPublicWeb } from '../services/publicQueryExtractor.js';
-import { enrichPublicWeb } from '../adapters/brightDataAdapter.js';
+import {
+  buildEnrichmentPlanFromPublicEnrichment,
+  runPublicEnrichment,
+} from '../services/publicEnrichmentService.js';
 import { verifyAgentTrust } from '../adapters/terminal3Adapter.js';
 import { mapIntentToWorkflow, planExecution } from '../services/executionPlanner.js';
 import { executeRuntimePlan } from '../execution/runtimeExecutor.js';
@@ -129,6 +132,22 @@ async function buildBlockedResponse(
     trust: { provider: 'Terminal 3', status: 'FAILED', contractMode: 'TEE_COMPLIANCE_GATEWAY' },
   });
 
+  const publicEnrichment = runPublicEnrichment({
+    missionId,
+    agentId: request.agentId,
+    inferredIntent: intake.inferredIntent,
+    selectedWorkflow: intake.selectedWorkflow,
+    content: request.content,
+    dataBoundary,
+    publicSearchQuery: '',
+    enrichmentAllowed: false,
+    enrichmentBlockedReason: reason,
+    privateDataBlockedFromExternalTools: dataBoundary.privateBlockedFromExternal,
+    t3Governance,
+    finalAgentState: 'AUTO_BLOCKED_BY_POLICY',
+    promptInjectionBlocked: Boolean(options.promptInjectionBlocked),
+  });
+
   const toolOrchestration = orchestrateBlockedTools(missionId, {
     intent: intake.inferredIntent,
     modalities: intake.modalities,
@@ -140,7 +159,7 @@ async function buildBlockedResponse(
     dataBoundary,
     enrichmentAllowed: false,
     publicSearchQuery: '',
-    enrichmentResult: { status: 'BLOCKED' },
+    publicEnrichment,
     t3Governance,
   });
 
@@ -161,7 +180,8 @@ async function buildBlockedResponse(
     },
     agentPassport: buildAgentPassportFromGovernance(t3Governance, agentControl.requiresT3Passport),
     dataBoundary,
-    enrichmentPlan: { allowed: false, publicSearchQuery: '', status: 'BLOCKED' },
+    enrichmentPlan: buildEnrichmentPlanFromPublicEnrichment(publicEnrichment),
+    publicEnrichment,
     llmJudge: { verdict: 'AUTO_BLOCKED_BY_POLICY', summary: reason },
     executionPlan: { status: 'NOT_PLANNED', targetRuntime: 'NONE' },
     toolOrchestration,
@@ -284,26 +304,6 @@ export async function runAgentIntake(request: AgentIntakeRequest): Promise<Agent
     dataBoundary.privateBlockedFromExternal,
   );
 
-  const enrichmentResult =
-    enrichmentSpec.allowed && enrichmentSpec.publicQuery
-      ? enrichPublicWeb(enrichmentSpec.publicQuery)
-      : {
-          provider: 'BrightData' as const,
-          status: 'BLOCKED' as const,
-          publicQuery: '',
-          findings: [],
-          note: enrichmentSpec.blockedReason ?? 'Public enrichment not allowed.',
-        };
-
-  trace.add(
-    'EnrichmentAgent',
-    'PUBLIC_ENRICHMENT',
-    enrichmentResult.status === 'BLOCKED' ? 'SKIPPED' : 'COMPLETED',
-    enrichmentSpec.publicQuery
-      ? `Public-only query: ${enrichmentSpec.publicQuery}`
-      : enrichmentResult.note,
-  );
-
   const trustFailed = trust.status === 'FAILED';
   const judge = runLlmJudgeAgent(
     intake.inferredIntent,
@@ -376,6 +376,32 @@ export async function runAgentIntake(request: AgentIntakeRequest): Promise<Agent
     t3Governance.auditSummary,
   );
 
+  const publicEnrichment = runPublicEnrichment({
+    missionId,
+    agentId: request.agentId,
+    inferredIntent: intake.inferredIntent,
+    selectedWorkflow: intake.selectedWorkflow,
+    content: request.content,
+    dataBoundary,
+    publicSearchQuery: enrichmentSpec.publicQuery,
+    enrichmentAllowed: enrichmentSpec.allowed,
+    enrichmentBlockedReason: enrichmentSpec.blockedReason,
+    privateDataBlockedFromExternalTools: dataBoundary.privateBlockedFromExternal,
+    t3Governance,
+    finalAgentState: judge.verdict,
+  });
+
+  trace.add(
+    'EnrichmentAgent',
+    'PUBLIC_ENRICHMENT',
+    publicEnrichment.status === 'BLOCKED' || publicEnrichment.status === 'SKIPPED'
+      ? 'SKIPPED'
+      : 'COMPLETED',
+    publicEnrichment.publicSearchQuery
+      ? `${publicEnrichment.mode} ${publicEnrichment.status}: ${publicEnrichment.publicSearchQuery}`
+      : publicEnrichment.reason,
+  );
+
   const toolOrchestration = orchestrateAgentTools({
     missionId,
     intent: intake.inferredIntent,
@@ -388,7 +414,7 @@ export async function runAgentIntake(request: AgentIntakeRequest): Promise<Agent
     dataBoundary,
     enrichmentAllowed: enrichmentSpec.allowed,
     publicSearchQuery: enrichmentSpec.publicQuery,
-    enrichmentResult,
+    publicEnrichment,
     kimiStatus: compliance.kimi.status,
     senseNovaStatus: compliance.senseNova?.status,
     judge,
@@ -432,14 +458,8 @@ export async function runAgentIntake(request: AgentIntakeRequest): Promise<Agent
       blockedFromExternalTools: dataBoundary.privateBlockedFromExternal,
       policy: 'Private data must not be sent to BrightData/MCP or external enrichment.',
     },
-    enrichmentPlan: {
-      allowed: enrichmentSpec.allowed,
-      publicSearchQuery: enrichmentSpec.publicQuery,
-      blockedReason: enrichmentSpec.blockedReason,
-      privateDataBlocked: dataBoundary.privateBlockedFromExternal,
-      brightData: enrichmentResult,
-      mcpReady: true,
-    },
+    enrichmentPlan: buildEnrichmentPlanFromPublicEnrichment(publicEnrichment),
+    publicEnrichment,
     llmJudge: {
       verdict: judge.verdict,
       summary: judge.summary,

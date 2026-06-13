@@ -104,6 +104,26 @@ export type T3Governance = {
   auditSummary: string;
 };
 
+export type PublicEnrichmentFinding = {
+  title: string;
+  sourceType: 'public_web' | 'company_registry' | 'news' | 'tender' | 'risk_signal' | 'mock';
+  summary: string;
+  riskSignal: 'LOW' | 'MEDIUM' | 'HIGH' | 'UNKNOWN';
+};
+
+export type PublicEnrichment = {
+  provider: 'BrightData/MCP';
+  mode: 'LIVE' | 'MOCK';
+  allowed: boolean;
+  status: 'COMPLETED' | 'MOCK_COMPLETED' | 'BLOCKED' | 'SKIPPED';
+  publicSearchQuery: string;
+  privateDataRemoved: boolean;
+  blockedPrivateDataTypes: string[];
+  findings: PublicEnrichmentFinding[];
+  summary: string;
+  reason: string;
+};
+
 export type AgentIntakeResponse = {
   missionId: string;
   agentId: string;
@@ -115,6 +135,7 @@ export type AgentIntakeResponse = {
   agentPassport: Record<string, unknown>;
   dataBoundary: Record<string, unknown>;
   enrichmentPlan: Record<string, unknown>;
+  publicEnrichment: PublicEnrichment;
   llmJudge: Record<string, unknown>;
   executionPlan: Record<string, unknown>;
   toolOrchestration: ToolOrchestration;
