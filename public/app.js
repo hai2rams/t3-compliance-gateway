@@ -335,17 +335,17 @@ function renderToolOrchestration(data) {
 
   const statusByTool = Object.fromEntries(orch.tools.map((t) => [t.tool, t]));
 
-  if (statusByTool.Daytona || statusByTool.Nosana || statusByTool.VideoDB) {
-    const runtime =
-      statusByTool.Daytona?.status !== 'SKIPPED'
-        ? statusByTool.Daytona
-        : statusByTool.Nosana?.status !== 'SKIPPED'
-          ? statusByTool.Nosana
-          : statusByTool.VideoDB;
-    if (runtime) {
-      document.getElementById('card-ex-dispatch').textContent =
-        `${runtime.status}: ${runtime.reason}`;
-    }
+  const selectedRuntime = resolveSelectedRuntime(data);
+  const toolByRuntime = {
+    daytona: 'Daytona',
+    nosana: 'Nosana',
+    videodb: 'VideoDB',
+  };
+  const activeTool = toolByRuntime[selectedRuntime];
+  if (activeTool && statusByTool[activeTool]) {
+    const runtime = statusByTool[activeTool];
+    document.getElementById('card-ex-dispatch').textContent =
+      `${runtime.status}: ${runtime.reason}`;
   }
 }
 
@@ -421,9 +421,85 @@ function yesNoDisplay(value, fallback = '—') {
   return fallback;
 }
 
+function resolveSelectedRuntime(data) {
+  const target = data.executionPlan?.targetRuntime;
+  if (target === 'VideoDB') return 'videodb';
+  if (target === 'Nosana') return 'nosana';
+  if (target === 'Daytona') return 'daytona';
+  return 'none';
+}
+
+const SPONSOR_CARD_RESET_IDS = [
+  'card-tr-mode',
+  'card-tr-route',
+  'card-tr-purpose',
+  'card-tr-primary',
+  'card-tr-secondary',
+  'card-tr-fallback',
+  'card-tr-cost',
+  'card-tr-privacy',
+  'card-tr-reason',
+  'card-t3-identity',
+  'card-t3-status',
+  'card-t3-scope',
+  'card-t3-audit',
+  'card-bd-mode',
+  'card-bd-status',
+  'card-bd-query',
+  'card-bd-private-removed',
+  'card-bd-blocked-types',
+  'card-bd-summary',
+  'card-bd-findings',
+  'card-ex-runtime',
+  'card-ex-mode',
+  'card-ex-dispatch-status',
+  'card-ex-allowed',
+  'card-ex-jobclass',
+  'card-ex-workload',
+  'card-ex-container',
+  'card-ex-records',
+  'card-ex-gpu',
+  'card-ex-persistence',
+  'card-ex-ttl',
+  'card-ex-raw-data',
+  'card-ex-redacted',
+  'card-ex-anonymized',
+  'card-ex-videodb-workflow',
+  'card-ex-videodb-raw-video',
+  'card-ex-videodb-frames',
+  'card-ex-videodb-audio',
+  'card-ex-videodb-faces',
+  'card-ex-videodb-external',
+  'card-ex-videodb-redacted',
+  'card-ex-network',
+  'card-ex-command',
+  'card-ex-artifacts',
+  'card-ex-safety',
+  'card-ex-plan',
+  'card-ex-dispatch',
+  'card-audit-mission',
+  'card-audit-policy',
+  'card-audit-outcome',
+  'card-audit-recorded',
+];
+
+function resetSponsorCardDisplay() {
+  SPONSOR_CARD_RESET_IDS.forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = '—';
+  });
+  setExecutionCardLayout('none');
+  if (toolChainGrid) toolChainGrid.innerHTML = '';
+  const toolNext = document.getElementById('tool-chain-next');
+  const toolAudit = document.getElementById('tool-chain-audit');
+  if (toolNext) toolNext.textContent = '—';
+  if (toolAudit) toolAudit.textContent = '—';
+}
+
 function resolveDaytonaDisplay(data) {
   const daytona = data.daytonaExecution || {};
   const exec = data.executionPlan || {};
+  const execPlan = exec.targetRuntime === 'Daytona' ? exec : {};
   const useKycFallback =
     data.inferredIntent === 'CREDIT_KYC_PRECHECK' &&
     (data.finalAgentState === 'AUTO_HOLD_REVIEW_REQUIRED' ||
@@ -431,69 +507,76 @@ function resolveDaytonaDisplay(data) {
       daytona.dispatchStatus === 'AWAITING_GOVERNANCE_APPROVAL');
   const fb = useKycFallback ? KYC_DAYTONA_FALLBACK : {};
 
-  const workspace = daytona.workspace || exec.workspace || fb.workspace || {};
-  const inputPolicy = daytona.inputPolicy || exec.inputPolicy || fb.inputPolicy || {};
+  const workspace = daytona.workspace || execPlan.workspace || fb.workspace || {};
+  const inputPolicy = daytona.inputPolicy || execPlan.inputPolicy || fb.inputPolicy || {};
 
   return {
-    mode: daytona.mode || exec.mode || fb.mode || 'MOCK',
+    mode: daytona.mode || execPlan.mode || fb.mode || 'MOCK',
     dispatchStatus:
-      daytona.dispatchStatus || exec.dispatchStatus || exec.status || fb.dispatchStatus || '—',
+      daytona.dispatchStatus ||
+      execPlan.dispatchStatus ||
+      execPlan.status ||
+      fb.dispatchStatus ||
+      '—',
     allowedToDispatch:
-      daytona.allowedToDispatch ?? exec.allowedToDispatch ?? fb.allowedToDispatch,
-    containerImage: daytona.containerImage || exec.containerImage || fb.containerImage || '—',
+      daytona.allowedToDispatch ?? execPlan.allowedToDispatch ?? fb.allowedToDispatch,
+    containerImage: daytona.containerImage || execPlan.containerImage || fb.containerImage || '—',
     workspace,
     inputPolicy,
-    plannedCommand: daytona.plannedCommand || exec.plannedCommand || fb.plannedCommand || '—',
+    plannedCommand: daytona.plannedCommand || execPlan.plannedCommand || fb.plannedCommand || '—',
     artifacts: daytona.artifacts?.length
       ? daytona.artifacts
-      : exec.artifacts?.length
-        ? exec.artifacts
+      : execPlan.artifacts?.length
+        ? execPlan.artifacts
         : fb.artifacts || [],
     safetyNotes: daytona.safetyNotes?.length
       ? daytona.safetyNotes
-      : exec.safetyNotes?.length
-        ? exec.safetyNotes
+      : execPlan.safetyNotes?.length
+        ? execPlan.safetyNotes
         : fb.safetyNotes || [],
-    reason: daytona.reason || exec.reason || fb.reason || '—',
+    reason: daytona.reason || execPlan.reason || fb.reason || '—',
   };
 }
 
 function resolveNosanaDisplay(data) {
   const nosana = data.nosanaExecution || {};
   const exec = data.executionPlan || {};
+  const execPlan = exec.targetRuntime === 'Nosana' ? exec : {};
 
-  const inputPolicy = nosana.inputPolicy || exec.inputPolicy || {};
+  const inputPolicy = nosana.inputPolicy || execPlan.inputPolicy || {};
 
   return {
-    mode: nosana.mode || exec.mode || 'MOCK',
-    queueStatus: nosana.queueStatus || exec.queueStatus || exec.status || '—',
-    allowedToQueue: nosana.allowedToQueue ?? exec.allowedToQueue,
-    jobClass: nosana.jobClass || exec.jobClass || '—',
-    workloadType: nosana.workloadType || exec.workloadType || '—',
-    containerImage: nosana.containerImage || exec.containerImage || '—',
-    estimatedRecords: nosana.estimatedRecords ?? exec.estimatedRecords ?? '—',
-    gpuRequired: nosana.gpuRequired ?? exec.gpuRequired,
+    mode: nosana.mode || execPlan.mode || 'MOCK',
+    queueStatus: nosana.queueStatus || execPlan.queueStatus || execPlan.status || '—',
+    allowedToQueue: nosana.allowedToQueue ?? execPlan.allowedToQueue,
+    jobClass: nosana.jobClass || execPlan.jobClass || '—',
+    workloadType: nosana.workloadType || execPlan.workloadType || '—',
+    containerImage: nosana.containerImage || execPlan.containerImage || '—',
+    estimatedRecords: nosana.estimatedRecords ?? execPlan.estimatedRecords ?? '—',
+    gpuRequired: nosana.gpuRequired ?? execPlan.gpuRequired,
     inputPolicy,
-    plannedCommand: nosana.plannedCommand || exec.plannedCommand || '—',
+    plannedCommand: nosana.plannedCommand || execPlan.plannedCommand || '—',
     artifacts: nosana.artifacts?.length
       ? nosana.artifacts
-      : exec.artifacts?.length
-        ? exec.artifacts
+      : execPlan.artifacts?.length
+        ? execPlan.artifacts
         : [],
     safetyNotes: nosana.safetyNotes?.length
       ? nosana.safetyNotes
-      : exec.safetyNotes?.length
-        ? exec.safetyNotes
+      : execPlan.safetyNotes?.length
+        ? execPlan.safetyNotes
         : [],
-    reason: nosana.reason || exec.reason || '—',
+    reason: nosana.reason || execPlan.reason || '—',
   };
 }
 
 function setExecutionCardLayout(runtime) {
+  const isDaytona = runtime === 'daytona';
   const isNosana = runtime === 'nosana';
   const isVideoDb = runtime === 'videodb';
+
   document.querySelectorAll('.exec-daytona-only').forEach((el) => {
-    el.hidden = isNosana || isVideoDb;
+    el.hidden = !isDaytona;
   });
   document.querySelectorAll('.exec-nosana-only').forEach((el) => {
     el.hidden = !isNosana;
@@ -502,7 +585,7 @@ function setExecutionCardLayout(runtime) {
     el.hidden = !isVideoDb;
   });
   document.querySelectorAll('.exec-not-videodb').forEach((el) => {
-    el.hidden = isVideoDb;
+    el.hidden = isVideoDb || runtime === 'none';
   });
 
   document.getElementById('card-ex-status-label').textContent = isNosana || isVideoDb
@@ -519,35 +602,37 @@ function setExecutionCardLayout(runtime) {
 function resolveVideoDbDisplay(data) {
   const videoDb = data.videoDbExecution || {};
   const exec = data.executionPlan || {};
-  const mediaPolicy = videoDb.mediaPolicy || exec.mediaPolicy || {};
+  const execPlan = exec.targetRuntime === 'VideoDB' ? exec : {};
+  const mediaPolicy = videoDb.mediaPolicy || execPlan.mediaPolicy || {};
 
   return {
-    mode: videoDb.mode || exec.mode || 'MOCK',
-    queueStatus: videoDb.queueStatus || exec.queueStatus || exec.status || '—',
-    allowedToQueue: videoDb.allowedToQueue ?? exec.allowedToQueue,
-    jobClass: videoDb.jobClass || exec.jobClass || '—',
-    workflowType: videoDb.workflowType || exec.workflowType || '—',
+    mode: videoDb.mode || execPlan.mode || 'MOCK',
+    queueStatus: videoDb.queueStatus || execPlan.queueStatus || execPlan.status || '—',
+    allowedToQueue: videoDb.allowedToQueue ?? execPlan.allowedToQueue,
+    jobClass: videoDb.jobClass || execPlan.jobClass || '—',
+    workflowType: videoDb.workflowType || execPlan.workflowType || '—',
     mediaPolicy,
     plannedActions: videoDb.plannedActions?.length
       ? videoDb.plannedActions
-      : exec.plannedActions?.length
-        ? exec.plannedActions
+      : execPlan.plannedActions?.length
+        ? execPlan.plannedActions
         : [],
     artifacts: videoDb.artifacts?.length
       ? videoDb.artifacts
-      : exec.artifacts?.length
-        ? exec.artifacts
+      : execPlan.artifacts?.length
+        ? execPlan.artifacts
         : [],
     safetyNotes: videoDb.safetyNotes?.length
       ? videoDb.safetyNotes
-      : exec.safetyNotes?.length
-        ? exec.safetyNotes
+      : execPlan.safetyNotes?.length
+        ? execPlan.safetyNotes
         : [],
-    reason: videoDb.reason || exec.reason || '—',
+    reason: videoDb.reason || execPlan.reason || '—',
   };
 }
 
 function renderSponsorCards(data) {
+  resetSponsorCardDisplay();
   sponsorRow.hidden = false;
 
   const tr = data.tokenRouterDecision || {};
@@ -649,32 +734,19 @@ function renderSponsorCards(data) {
         .join(' | ')
     : '—';
 
+  const selectedRuntime = resolveSelectedRuntime(data);
   const daytonaView = resolveDaytonaDisplay(data);
   const nosanaView = resolveNosanaDisplay(data);
   const videoDbView = resolveVideoDbDisplay(data);
-  const isNosanaRuntime =
-    exec.targetRuntime === 'Nosana' || data.nosanaExecution?.provider === 'Nosana';
-  const isVideoDbRuntime =
-    exec.targetRuntime === 'VideoDB' || data.videoDbExecution?.provider === 'VideoDB';
   const isKycHold =
     data.inferredIntent === 'CREDIT_KYC_PRECHECK' &&
     data.finalAgentState === 'AUTO_HOLD_REVIEW_REQUIRED';
 
-  setExecutionCardLayout(
-    isVideoDbRuntime ? 'videodb' : isNosanaRuntime ? 'nosana' : 'daytona',
-  );
+  setExecutionCardLayout(selectedRuntime);
 
-  document.getElementById('card-ex-runtime').textContent =
-    exec.targetRuntime ||
-    (isVideoDbRuntime
-      ? 'VideoDB'
-      : isNosanaRuntime
-        ? 'Nosana'
-        : data.daytonaExecution?.provider
-          ? 'Daytona'
-          : '—');
+  document.getElementById('card-ex-runtime').textContent = exec.targetRuntime || '—';
 
-  if (isVideoDbRuntime) {
+  if (selectedRuntime === 'videodb') {
     document.getElementById('card-ex-mode').textContent = videoDbView.mode;
     document.getElementById('card-ex-dispatch-status').textContent = videoDbView.queueStatus;
     document.getElementById('card-ex-allowed').textContent = yesNoDisplay(
@@ -714,7 +786,7 @@ function renderSponsorCards(data) {
         : videoDbView.queueStatus === 'AWAITING_GOVERNANCE_APPROVAL'
           ? 'Awaiting governance approval'
           : 'Not queued';
-  } else if (isNosanaRuntime) {
+  } else if (selectedRuntime === 'nosana') {
     document.getElementById('card-ex-mode').textContent = nosanaView.mode;
     document.getElementById('card-ex-dispatch-status').textContent = nosanaView.queueStatus;
     document.getElementById('card-ex-allowed').textContent = yesNoDisplay(
@@ -741,7 +813,7 @@ function renderSponsorCards(data) {
         : nosanaView.queueStatus === 'AWAITING_GOVERNANCE_APPROVAL'
           ? 'Awaiting governance approval'
           : 'Not queued';
-  } else {
+  } else if (selectedRuntime === 'daytona') {
     document.getElementById('card-ex-mode').textContent = daytonaView.mode;
     document.getElementById('card-ex-dispatch-status').textContent = daytonaView.dispatchStatus;
     document.getElementById('card-ex-allowed').textContent = yesNoDisplay(
@@ -775,6 +847,22 @@ function renderSponsorCards(data) {
       : daytonaView.dispatchStatus === 'AWAITING_GOVERNANCE_APPROVAL'
         ? 'Awaiting governance approval'
         : 'Not dispatched (governed hold)';
+  } else {
+    document.getElementById('card-ex-mode').textContent = exec.mode || '—';
+    document.getElementById('card-ex-dispatch-status').textContent = exec.status || '—';
+    document.getElementById('card-ex-allowed').textContent = '—';
+    document.getElementById('card-ex-jobclass').textContent = exec.jobClass || '—';
+    document.getElementById('card-ex-command').textContent =
+      exec.plannedCommand || exec.plannedActions?.join(', ') || '—';
+    document.getElementById('card-ex-artifacts').textContent =
+      exec.artifacts?.join(', ') || '—';
+    document.getElementById('card-ex-safety').textContent =
+      exec.safetyNotes?.join(' | ') || '—';
+    document.getElementById('card-ex-plan').textContent = exec.reason || '—';
+    document.getElementById('card-ex-dispatch').textContent =
+      data.finalAgentState === 'AUTO_BLOCKED_BY_POLICY'
+        ? 'Blocked by policy'
+        : exec.runtimeStatus || 'No runtime dispatch';
   }
 
   document.getElementById('card-audit-mission').textContent = data.missionId || '—';
@@ -821,6 +909,7 @@ async function runAutopilot() {
   lastAutopilotRequest = payload;
   lastAutopilotResponse = null;
   setAutopilotStatus('Running autonomous intake…');
+  resetSponsorCardDisplay();
   animateTraceLoading();
   sponsorRow.hidden = true;
   toolChainSection.hidden = true;
