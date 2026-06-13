@@ -60,7 +60,7 @@ export async function runGeminiReasoning(
         ? 'Mock Gemini analysis: content aligns with stated purpose.'
         : input.decision === 'DENY'
           ? 'Mock Gemini analysis: detected policy conflict with stated purpose.'
-          : 'Mock Gemini analysis: ambiguous intent — recommend human review.';
+          : 'Mock Gemini analysis: ambiguous intent — recommend governance review.';
 
     return {
       provider: 'Gemini',

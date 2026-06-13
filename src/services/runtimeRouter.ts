@@ -28,7 +28,7 @@ export function routeRuntimeExecution(
       provider: 'NONE',
       status: 'AWAITING_APPROVAL',
       jobClass: 'NONE',
-      reason: 'Human review required before runtime execution.',
+      reason: 'Governance approval required before runtime execution.',
     };
   }
 

@@ -33,7 +33,7 @@ export async function runKimiReasoning(input: KimiInput): Promise<KimiReasoningR
         ? 'Mock Kimi analysis: content aligns with stated purpose.'
         : input.decision === 'DENY'
           ? 'Mock Kimi analysis: detected policy conflict with stated purpose.'
-          : 'Mock Kimi analysis: ambiguous intent — recommend human review.';
+          : 'Mock Kimi analysis: ambiguous intent — recommend governance review.';
 
     return {
       provider: 'Kimi',

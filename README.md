@@ -15,11 +15,11 @@ This project is a **compliance-first autonomous intake gateway** built on the ex
 3. Applies **Terminal 3** identity, permission scope, and TEE-backed governance
 4. Protects private data at the **data boundary**
 5. Enriches only public-safe context via **BrightData/MCP** (adapter-ready)
-6. Validates with an **LLM judge** (human review when required)
+6. Validates with an **LLM judge** (governance review when required)
 7. Prepares a **runtime execution plan** (Daytona / Nosana / VideoDB)
 8. Records a full **audit trail**
 
-> **AI does not approve loans or final business actions.** AI-generated assessments require human verification before operational use.
+> **AI does not approve loans or final business actions.** AI-generated assessments require governance verification before operational use.
 
 ## Architecture flow
 
@@ -50,7 +50,7 @@ Implementation mapping today: **Sensitive Data Filter → Policy Engine → Risk
 | **Terminal 3** | Agent trust, TEE contract mode, sealed secrets map (hardware-isolated) |
 | **Data boundary** | PII/sensitive labeling, redaction preview — private fields blocked from external enrichment |
 | **BrightData/MCP** | Public web enrichment only (mock-safe adapter; no PII egress) |
-| **LLM judge** | Kimi / SenseNova semantic reasoning; REVIEW when policy requires human gate |
+| **LLM judge** | Kimi / SenseNova semantic reasoning; REVIEW when policy requires governance gate |
 | **Execution planner** | Daytona (sandbox), Nosana (GPU batch), or VideoDB (media workflow) — **planned**, not arbitrary shell |
 | **Audit trail** | `GET /api/v1/compliance/audit-log` + in-memory telemetry |
 
@@ -70,19 +70,47 @@ Implementation mapping today: **Sensitive Data Filter → Policy Engine → Risk
 
 All integrations live behind adapters in `src/adapters/`. See [mock-safe adapter strategy](#mock-safe-adapter-strategy) below.
 
+## Demo Script (2-minute hackathon flow)
+
+Use the **Autopilot** panel at http://localhost:4000/ — load each quick sample and click **Run Autopilot**.
+
+| Step | Sample | What to highlight |
+|------|--------|-------------------|
+| 1 (~30s) | **Credit/KYC Package** | `AUTO_HOLD_REVIEW_REQUIRED` · `CREDIT_KYC_PRECHECK` · `DOCUMENT + TEXT` · Terminal 3 governance proof · TokenRouter `DOCUMENT_KYC_REVIEW` · Kimi + SenseNova · BrightData public-only enrichment · Daytona plan held for governance approval · audit recorded |
+| 2 (~30s) | **Batch Risk Scan** | `EXECUTION_QUEUED` · `BATCH_RISK_SCAN` · `BATCH` · Nosana selected · anonymized input only · governed batch queue · audit recorded |
+| 3 (~30s) | **Secure Video Review** | `AUTO_HOLD_REVIEW_REQUIRED` · `VIDEO_REVIEW` · `VIDEO` · VideoDB selected · `AWAITING_GOVERNANCE_APPROVAL` · no external media sharing · audit recorded |
+| 4 (~30s) | **Prompt Injection Attempt** | `AUTO_BLOCKED_BY_POLICY` · external tools blocked · runtime execution blocked · no stale runtime fields |
+
+**Sponsor / tool mapping (visible in tool chain cards):**
+
+| Tool | Demo role |
+|------|-----------|
+| Terminal 3 | Identity, permission scope, governance proof hashes |
+| TokenRouter | Model route, cost/privacy boundary |
+| Kimi / SenseNova | Reasoning and judge (when not policy-blocked) |
+| BrightData/MCP | Public web enrichment only — private KYC never egresses |
+| Daytona | Document/KYC sandbox plan (held until governance approval) |
+| Nosana | GPU batch queue for anonymized scans |
+| VideoDB | Secure video workflow (governed media policy) |
+
+**Mock / live boundary**
+
+- Default submission setup: `cp .env.example .env` with `MOCK_MODE=true` and empty API keys → all sponsor cards show **mock-safe** modes (`MOCK`, `QUEUED_MOCK`, `MOCK_COMPLETED`, `MOCK_VERIFIED`).
+- With live credentials configured and `MOCK_MODE` not true, adapters may return `LIVE` / `USED` / `QUEUED_LIVE` — the UI reflects actual backend mode and does not claim live integration when keys are absent.
+- Runtime execution is **planned or queued under policy** — never arbitrary shell commands from user content.
+
+**Safety statement**
+
+> AI classifies, governs, enriches, judges, and plans execution — it does **not** approve loans, release raw sensitive data, or dispatch runtime workloads without governance approval. Prompt-injection and policy blocks halt external tools and runtime dispatch immediately.
+
 ## Demo flow — hero: Credit / KYC Precheck Package
 
-1. User uploads or pastes a **KYC package** (claims workflow sample: passport, salary slip, bank statement).
-2. Agent **classifies** automatically as `CLAIMS_REVIEW`.
-3. **TokenRouter** routes **SenseNova + Kimi** for document/multimodal reasoning.
-4. **Data boundary** protects passport, salary, and bank details (redacted preview in UI).
-5. **Terminal 3** verifies agent identity and permission scope (`MOCK_VERIFIED` without keys).
-6. **BrightData/MCP** receives only **public company terms** — never private KYC fields.
-7. **LLM judge** returns **REVIEW** — hold required before any business action.
-8. **Daytona** Docker sandbox plan is **prepared but not executed** on REVIEW.
-9. Full **audit** is recorded in the compliance audit log.
+1. Open the demo UI and load **Credit/KYC Package**.
+2. Click **Run Autopilot**.
+3. Walk through the trace: classification → TokenRouter → Terminal 3 → data boundary → BrightData (public only) → LLM judge → Daytona plan → audit.
+4. Point out **governance approval** hold before any sandbox dispatch.
 
-Open the demo UI, load **Claims document with PII**, click **Run Compliance Check**.
+Legacy compliance form samples remain available in the lower panel for `POST /api/v1/compliance/check`.
 
 ## How to run
 

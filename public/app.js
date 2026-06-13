@@ -183,6 +183,10 @@ function parsePolicyFromTrace(trace) {
   return match ? match[1] : '—';
 }
 
+function resolveAuditPolicyId(data) {
+  return data.t3Governance?.proof?.policyId || parsePolicyFromTrace(data.agentTrace);
+}
+
 function renderTrace(trace) {
   if (!trace?.length) {
     traceTimeline.innerHTML = '<p class="empty-state">No trace steps returned.</p>';
@@ -208,7 +212,7 @@ function renderTrace(trace) {
 function renderOutcome(data) {
   const finalState = data.finalAgentState || '—';
   const llmJudge = data.llmJudge || {};
-  const exec = data.executionPlan || {};
+  const outcomeExec = resolveOutcomeExecution(data);
   const riskScore = parseRiskFromTrace(data.agentTrace);
 
   const finalEl = document.getElementById('out-final-state');
@@ -217,9 +221,10 @@ function renderOutcome(data) {
 
   document.getElementById('out-risk-score').textContent = riskScore ?? '—';
   document.getElementById('out-intent').textContent = data.inferredIntent || '—';
-  document.getElementById('out-modality').textContent = data.detectedModality || '—';
+  document.getElementById('out-modality').textContent =
+    data.detectedModality || data.dataBoundary?.detectedModality || '—';
   document.getElementById('out-decision-reason').textContent =
-    llmJudge.summary || data.tokenRouterDecision?.routeReason || '—';
+    llmJudge.summary || data.modelRouting?.routeReason || data.tokenRouterDecision?.routeReason || '—';
 
   const nextAction =
     NEXT_SAFE_ACTIONS[finalState] ||
@@ -228,11 +233,11 @@ function renderOutcome(data) {
       : 'Review agent trace and follow governed workflow.');
   document.getElementById('out-next-action').textContent = nextAction;
 
-  document.getElementById('out-runtime').textContent = exec.targetRuntime || '—';
-  document.getElementById('out-exec-mode').textContent = exec.executionMode || '—';
-  document.getElementById('out-container').textContent = exec.containerImage || '—';
+  document.getElementById('out-runtime').textContent = outcomeExec.targetRuntime || '—';
+  document.getElementById('out-exec-mode').textContent = outcomeExec.mode || '—';
+  document.getElementById('out-container').textContent = outcomeExec.container || '—';
 
-  let execStatus = data.daytonaExecution?.dispatchStatus || exec.dispatchStatus || exec.status || '—';
+  let execStatus = outcomeExec.status || '—';
   if (finalState === 'AUTO_HOLD_REVIEW_REQUIRED' && execStatus === 'AWAITING_GOVERNANCE_APPROVAL') {
     execStatus = 'AWAITING_GOVERNANCE_APPROVAL (HOLD)';
   }
@@ -427,6 +432,57 @@ function resolveSelectedRuntime(data) {
   if (target === 'Nosana') return 'nosana';
   if (target === 'Daytona') return 'daytona';
   return 'none';
+}
+
+function resolveOutcomeExecution(data) {
+  const exec = data.executionPlan || {};
+  const runtime = resolveSelectedRuntime(data);
+
+  if (runtime === 'videodb') {
+    const videoDb = data.videoDbExecution || {};
+    return {
+      targetRuntime: exec.targetRuntime || 'VideoDB',
+      mode: videoDb.mode || exec.mode || exec.executionMode,
+      container: exec.containerImage || '—',
+      status: videoDb.queueStatus || exec.queueStatus || exec.status,
+    };
+  }
+
+  if (runtime === 'nosana') {
+    const nosana = data.nosanaExecution || {};
+    return {
+      targetRuntime: exec.targetRuntime || 'Nosana',
+      mode: nosana.mode || exec.mode || exec.executionMode,
+      container: nosana.containerImage || exec.containerImage,
+      status: nosana.queueStatus || exec.queueStatus || exec.status,
+    };
+  }
+
+  if (runtime === 'daytona') {
+    const daytona = data.daytonaExecution || {};
+    return {
+      targetRuntime: exec.targetRuntime || 'Daytona',
+      mode: daytona.mode || exec.mode || exec.executionMode,
+      container: daytona.containerImage || exec.containerImage,
+      status: daytona.dispatchStatus || exec.dispatchStatus || exec.status,
+    };
+  }
+
+  if (data.finalAgentState === 'AUTO_BLOCKED_BY_POLICY') {
+    return {
+      targetRuntime: exec.targetRuntime || 'NONE',
+      mode: exec.mode || '—',
+      container: '—',
+      status: 'BLOCKED',
+    };
+  }
+
+  return {
+    targetRuntime: exec.targetRuntime || 'NONE',
+    mode: exec.mode || exec.executionMode || '—',
+    container: exec.containerImage || '—',
+    status: exec.status || exec.runtimeStatus || '—',
+  };
 }
 
 const SPONSOR_CARD_RESET_IDS = [
@@ -652,8 +708,7 @@ function renderSponsorCards(data) {
   const secondaryModel =
     llmModels[1]?.model ||
     tr.judgeReasoningProvider ||
-    (tr.secondaryProviders || []).find((m) => m === 'Kimi') ||
-    '—';
+    (llmModels.length === 1 ? 'Not routed (single-model)' : '—');
 
   document.getElementById('card-tr-mode').textContent = modelRouting.mode || 'MOCK';
   document.getElementById('card-tr-route').textContent = route;
@@ -866,7 +921,7 @@ function renderSponsorCards(data) {
   }
 
   document.getElementById('card-audit-mission').textContent = data.missionId || '—';
-  document.getElementById('card-audit-policy').textContent = parsePolicyFromTrace(data.agentTrace);
+  document.getElementById('card-audit-policy').textContent = resolveAuditPolicyId(data);
   document.getElementById('card-audit-outcome').textContent = data.finalAgentState || '—';
   document.getElementById('card-audit-recorded').textContent = data.timestamp
     ? new Date(data.timestamp).toLocaleString()
