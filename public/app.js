@@ -34,10 +34,17 @@ const AGENT_SAMPLES = {
     label: 'Batch Risk Scan',
     request: {
       agentId: 'regulated-intake-agent',
-      goal: 'Run governed anonymized batch risk scan.',
+      goal: 'Run an anonymized batch risk scan.',
       content:
-        'Run anonymized batch anomaly detection on 20000 internal finance records with no PII.',
-      hints: { hasBatch: true },
+        'Run anonymized anomaly scan across 20,000 transaction records. Dataset has no names, account numbers, emails, phone numbers, or raw PII. Need GPU/batch compute for risk scoring.',
+      hints: {
+        hasFile: false,
+        hasImage: false,
+        hasAudio: false,
+        hasVideo: false,
+        hasBatch: true,
+        needsPublicWeb: false,
+      },
     },
   },
   'video-review': {
@@ -442,6 +449,52 @@ function resolveDaytonaDisplay(data) {
   };
 }
 
+function resolveNosanaDisplay(data) {
+  const nosana = data.nosanaExecution || {};
+  const exec = data.executionPlan || {};
+
+  const inputPolicy = nosana.inputPolicy || exec.inputPolicy || {};
+
+  return {
+    mode: nosana.mode || exec.mode || 'MOCK',
+    queueStatus: nosana.queueStatus || exec.queueStatus || exec.status || '—',
+    allowedToQueue: nosana.allowedToQueue ?? exec.allowedToQueue,
+    jobClass: nosana.jobClass || exec.jobClass || '—',
+    workloadType: nosana.workloadType || exec.workloadType || '—',
+    containerImage: nosana.containerImage || exec.containerImage || '—',
+    estimatedRecords: nosana.estimatedRecords ?? exec.estimatedRecords ?? '—',
+    gpuRequired: nosana.gpuRequired ?? exec.gpuRequired,
+    inputPolicy,
+    plannedCommand: nosana.plannedCommand || exec.plannedCommand || '—',
+    artifacts: nosana.artifacts?.length
+      ? nosana.artifacts
+      : exec.artifacts?.length
+        ? exec.artifacts
+        : [],
+    safetyNotes: nosana.safetyNotes?.length
+      ? nosana.safetyNotes
+      : exec.safetyNotes?.length
+        ? exec.safetyNotes
+        : [],
+    reason: nosana.reason || exec.reason || '—',
+  };
+}
+
+function setExecutionCardLayout(isNosana) {
+  document.querySelectorAll('.exec-daytona-only').forEach((el) => {
+    el.hidden = isNosana;
+  });
+  document.querySelectorAll('.exec-nosana-only').forEach((el) => {
+    el.hidden = !isNosana;
+  });
+  document.getElementById('card-ex-status-label').textContent = isNosana
+    ? 'Queue status'
+    : 'Dispatch status';
+  document.getElementById('card-ex-allowed-label').textContent = isNosana
+    ? 'Allowed to queue'
+    : 'Allowed to dispatch';
+}
+
 function renderSponsorCards(data) {
   sponsorRow.hidden = false;
 
@@ -545,45 +598,81 @@ function renderSponsorCards(data) {
     : '—';
 
   const daytonaView = resolveDaytonaDisplay(data);
+  const nosanaView = resolveNosanaDisplay(data);
+  const isNosanaRuntime =
+    exec.targetRuntime === 'Nosana' || data.nosanaExecution?.provider === 'Nosana';
   const isKycHold =
     data.inferredIntent === 'CREDIT_KYC_PRECHECK' &&
     data.finalAgentState === 'AUTO_HOLD_REVIEW_REQUIRED';
 
+  setExecutionCardLayout(isNosanaRuntime);
+
   document.getElementById('card-ex-runtime').textContent =
-    exec.targetRuntime || (data.daytonaExecution?.provider ? 'Daytona' : '—');
-  document.getElementById('card-ex-mode').textContent = daytonaView.mode;
-  document.getElementById('card-ex-dispatch-status').textContent = daytonaView.dispatchStatus;
-  document.getElementById('card-ex-allowed').textContent = yesNoDisplay(
-    daytonaView.allowedToDispatch,
-  );
-  document.getElementById('card-ex-jobclass').textContent =
-    data.daytonaExecution?.jobClass || exec.jobClass || '—';
-  document.getElementById('card-ex-container').textContent = daytonaView.containerImage;
-  document.getElementById('card-ex-persistence').textContent =
-    daytonaView.workspace.persistence || (isKycHold ? 'STATEFUL' : '—');
-  document.getElementById('card-ex-ttl').textContent =
-    daytonaView.workspace.ttlMinutes ?? (isKycHold ? 30 : '—');
-  document.getElementById('card-ex-raw-data').textContent = yesNoDisplay(
-    daytonaView.inputPolicy.rawSensitiveDataAllowed,
-    isKycHold ? 'No' : '—',
-  );
-  document.getElementById('card-ex-redacted').textContent = yesNoDisplay(
-    daytonaView.inputPolicy.redactedInputOnly,
-    isKycHold ? 'Yes' : '—',
-  );
-  document.getElementById('card-ex-network').textContent =
-    daytonaView.inputPolicy.externalNetwork || (isKycHold ? 'DISABLED_BY_DEFAULT' : '—');
-  document.getElementById('card-ex-command').textContent = daytonaView.plannedCommand;
-  document.getElementById('card-ex-artifacts').textContent =
-    daytonaView.artifacts.join(', ') || '—';
-  document.getElementById('card-ex-safety').textContent =
-    daytonaView.safetyNotes.join(' | ') || '—';
-  document.getElementById('card-ex-plan').textContent = daytonaView.reason;
-  document.getElementById('card-ex-dispatch').textContent = exec.executed
-    ? exec.runtimeStatus || 'Dispatched'
-    : daytonaView.dispatchStatus === 'AWAITING_GOVERNANCE_APPROVAL'
-      ? 'Awaiting governance approval'
-      : 'Not dispatched (governed hold)';
+    exec.targetRuntime ||
+    (isNosanaRuntime ? 'Nosana' : data.daytonaExecution?.provider ? 'Daytona' : '—');
+
+  if (isNosanaRuntime) {
+    document.getElementById('card-ex-mode').textContent = nosanaView.mode;
+    document.getElementById('card-ex-dispatch-status').textContent = nosanaView.queueStatus;
+    document.getElementById('card-ex-allowed').textContent = yesNoDisplay(
+      nosanaView.allowedToQueue,
+    );
+    document.getElementById('card-ex-jobclass').textContent = nosanaView.jobClass;
+    document.getElementById('card-ex-workload').textContent = nosanaView.workloadType;
+    document.getElementById('card-ex-container').textContent = nosanaView.containerImage;
+    document.getElementById('card-ex-records').textContent = nosanaView.estimatedRecords;
+    document.getElementById('card-ex-gpu').textContent = yesNoDisplay(nosanaView.gpuRequired);
+    document.getElementById('card-ex-anonymized').textContent = yesNoDisplay(
+      nosanaView.inputPolicy.anonymizedInputOnly,
+    );
+    document.getElementById('card-ex-command').textContent = nosanaView.plannedCommand;
+    document.getElementById('card-ex-artifacts').textContent =
+      nosanaView.artifacts.join(', ') || '—';
+    document.getElementById('card-ex-safety').textContent =
+      nosanaView.safetyNotes.join(' | ') || '—';
+    document.getElementById('card-ex-plan').textContent = nosanaView.reason;
+    document.getElementById('card-ex-dispatch').textContent = exec.executed
+      ? exec.runtimeStatus || 'Queued'
+      : nosanaView.queueStatus === 'QUEUED_MOCK' || nosanaView.queueStatus === 'QUEUED_LIVE'
+        ? 'Governed batch queue planned'
+        : nosanaView.queueStatus === 'AWAITING_GOVERNANCE_APPROVAL'
+          ? 'Awaiting governance approval'
+          : 'Not queued';
+  } else {
+    document.getElementById('card-ex-mode').textContent = daytonaView.mode;
+    document.getElementById('card-ex-dispatch-status').textContent = daytonaView.dispatchStatus;
+    document.getElementById('card-ex-allowed').textContent = yesNoDisplay(
+      daytonaView.allowedToDispatch,
+    );
+    document.getElementById('card-ex-jobclass').textContent =
+      data.daytonaExecution?.jobClass || exec.jobClass || '—';
+    document.getElementById('card-ex-container').textContent = daytonaView.containerImage;
+    document.getElementById('card-ex-persistence').textContent =
+      daytonaView.workspace.persistence || (isKycHold ? 'STATEFUL' : '—');
+    document.getElementById('card-ex-ttl').textContent =
+      daytonaView.workspace.ttlMinutes ?? (isKycHold ? 30 : '—');
+    document.getElementById('card-ex-raw-data').textContent = yesNoDisplay(
+      daytonaView.inputPolicy.rawSensitiveDataAllowed,
+      isKycHold ? 'No' : '—',
+    );
+    document.getElementById('card-ex-redacted').textContent = yesNoDisplay(
+      daytonaView.inputPolicy.redactedInputOnly,
+      isKycHold ? 'Yes' : '—',
+    );
+    document.getElementById('card-ex-network').textContent =
+      daytonaView.inputPolicy.externalNetwork || (isKycHold ? 'DISABLED_BY_DEFAULT' : '—');
+    document.getElementById('card-ex-command').textContent = daytonaView.plannedCommand;
+    document.getElementById('card-ex-artifacts').textContent =
+      daytonaView.artifacts.join(', ') || '—';
+    document.getElementById('card-ex-safety').textContent =
+      daytonaView.safetyNotes.join(' | ') || '—';
+    document.getElementById('card-ex-plan').textContent = daytonaView.reason;
+    document.getElementById('card-ex-dispatch').textContent = exec.executed
+      ? exec.runtimeStatus || 'Dispatched'
+      : daytonaView.dispatchStatus === 'AWAITING_GOVERNANCE_APPROVAL'
+        ? 'Awaiting governance approval'
+        : 'Not dispatched (governed hold)';
+  }
 
   document.getElementById('card-audit-mission').textContent = data.missionId || '—';
   document.getElementById('card-audit-policy').textContent = parsePolicyFromTrace(data.agentTrace);

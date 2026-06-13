@@ -31,8 +31,11 @@ import {
 } from '../services/t3GovernanceService.js';
 import {
   buildDaytonaExecutionPlan,
-  buildExecutionPlanFromDaytonaExecution,
 } from '../services/daytonaExecutionPlanner.js';
+import {
+  alignExecutionPlanWithRuntime,
+  buildNosanaExecutionPlan,
+} from '../services/nosanaExecutionPlanner.js';
 import {
   buildTokenRouterDecisionFromModelRouting,
   routeModelForAgentTask,
@@ -192,6 +195,23 @@ async function buildBlockedResponse(
     intentControlBlocked: Boolean(options.intentControlBlocked),
   });
 
+  const nosanaExecution = buildNosanaExecutionPlan({
+    missionId,
+    agentId: request.agentId,
+    inferredIntent: intake.inferredIntent,
+    selectedWorkflow: intake.selectedWorkflow,
+    finalAgentState: 'AUTO_BLOCKED_BY_POLICY',
+    dataBoundary,
+    sensitiveDataDetected: dataBoundary.detected,
+    detectedSensitiveTypes: dataBoundary.types,
+    estimatedRecords: intake.inferredIntent === 'BATCH_RISK_SCAN' ? 20_000 : 0,
+    needsGpu: intake.inferredIntent === 'BATCH_RISK_SCAN',
+    policyId,
+    executionPlan: blockedExecutionBase,
+    promptInjectionBlocked: Boolean(options.promptInjectionBlocked),
+    intentControlBlocked: Boolean(options.intentControlBlocked),
+  });
+
   const toolOrchestration = orchestrateBlockedTools(missionId, {
     intent: intake.inferredIntent,
     modalities: intake.modalities,
@@ -206,6 +226,7 @@ async function buildBlockedResponse(
     publicSearchQuery: '',
     publicEnrichment,
     daytonaExecution,
+    nosanaExecution,
     t3Governance,
   });
 
@@ -233,8 +254,13 @@ async function buildBlockedResponse(
     enrichmentPlan: buildEnrichmentPlanFromPublicEnrichment(publicEnrichment),
     publicEnrichment,
     llmJudge: { verdict: 'AUTO_BLOCKED_BY_POLICY', summary: reason },
-    executionPlan: buildExecutionPlanFromDaytonaExecution(daytonaExecution, blockedExecutionBase),
+    executionPlan: alignExecutionPlanWithRuntime(
+      blockedExecutionBase,
+      daytonaExecution,
+      nosanaExecution,
+    ),
     daytonaExecution,
+    nosanaExecution,
     toolOrchestration,
     t3Governance,
     finalAgentState: 'AUTO_BLOCKED_BY_POLICY',
@@ -455,9 +481,26 @@ export async function runAgentIntake(request: AgentIntakeRequest): Promise<Agent
     policyId: compliance.policyId,
   });
 
-  const executionPlanFinal = buildExecutionPlanFromDaytonaExecution(
-    daytonaExecution,
+  const nosanaExecution = buildNosanaExecutionPlan({
+    missionId,
+    agentId: request.agentId,
+    inferredIntent: intake.inferredIntent,
+    selectedWorkflow: intake.selectedWorkflow,
+    finalAgentState: judge.verdict,
+    dataBoundary,
+    sensitiveDataDetected: dataBoundary.detected,
+    detectedSensitiveTypes: dataBoundary.types,
+    estimatedRecords:
+      mapIntentToWorkflow(intake.inferredIntent) === 'BULK_BATCH_JOB' ? 20_000 : 0,
+    needsGpu: intake.inferredIntent === 'BATCH_RISK_SCAN',
+    policyId: compliance.policyId,
+    executionPlan: executionPlanPayload,
+  });
+
+  const executionPlanFinal = alignExecutionPlanWithRuntime(
     executionPlanPayload,
+    daytonaExecution,
+    nosanaExecution,
   );
 
   const publicEnrichment = runPublicEnrichment({
@@ -507,6 +550,7 @@ export async function runAgentIntake(request: AgentIntakeRequest): Promise<Agent
     runtime,
     t3Governance,
     daytonaExecution,
+    nosanaExecution,
   });
 
   trace.add(
@@ -557,6 +601,7 @@ export async function runAgentIntake(request: AgentIntakeRequest): Promise<Agent
     },
     executionPlan: executionPlanFinal,
     daytonaExecution,
+    nosanaExecution,
     toolOrchestration,
     t3Governance,
     finalAgentState: judge.verdict,

@@ -11,6 +11,13 @@ export const RISK_POLICY = {
 export function requiresHumanReview(intent: string, riskScore: number): boolean {
   const governed = getGovernedIntentPolicy(intent);
   if (governed?.holdOnSensitiveData) return true;
+  if (
+    intent === 'BATCH_RISK_SCAN' &&
+    RISK_POLICY.batchAllowAnonymized &&
+    riskScore < RISK_POLICY.autoBlockAboveRiskScore
+  ) {
+    return false;
+  }
   if (intent === 'VENDOR_ONBOARDING' && riskScore >= 40) return true;
   if (riskScore >= RISK_POLICY.autoHoldAboveRiskScore) return true;
   return false;

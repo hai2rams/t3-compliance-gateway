@@ -35,10 +35,10 @@ export function planExecution(
       return {
         targetRuntime: 'Nosana',
         executionMode: 'GPU Batch',
-        jobClass: 'HEAVY_BATCH_GPU',
-        containerImage: null,
+        jobClass: 'GPU_BATCH_RISK_SCAN',
+        containerImage: 'batch-risk-scanner:latest',
         status: finalState === 'EXECUTION_QUEUED' ? 'QUEUED_MOCK' : 'PLANNED',
-        reason: 'Approved heavy/batch workload can be dispatched to Nosana compute.',
+        reason: 'Anonymized batch risk scan is eligible for governed GPU/batch execution.',
       };
     case 'VIDEO_ANALYSIS':
       return {

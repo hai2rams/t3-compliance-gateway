@@ -182,6 +182,18 @@ The autonomous intake flow returns a structured `daytonaExecution` object from `
 
 `executionPlan` is aligned to `daytonaExecution` (`provider`, `dispatchStatus`, `inputPolicy`, `artifacts`, `safetyNotes`). The agentic tool chain Daytona card reflects `PLANNED` (awaiting governance), `MOCKED`/`USED` (queued), `BLOCKED`, or `SKIPPED`.
 
+## Nosana batch route
+
+The autonomous intake flow returns a structured `nosanaExecution` object from `src/services/nosanaExecutionPlanner.ts`:
+
+- **GPU/batch execution route** — Nosana is the governed runtime for anonymized batch risk scans (`BATCH_RISK_SCAN`).
+- **Automatic queue eligibility** — only anonymized batch workloads with no sensitive data detected may be queued automatically (`allowedToQueue: true`, `EXECUTION_QUEUED`).
+- **Governance holds** — PII or sensitive boundary detections set `AWAITING_GOVERNANCE_APPROVAL`; prompt-injection and policy blocks set `BLOCKED`.
+- **Predefined commands only** — `run-batch-risk-scan --input anonymized_batch.json` from an internal whitelist; user content never becomes shell input.
+- **Mock-safe by default** — returns `mode: MOCK` and `QUEUED_MOCK` when `NOSANA_API_KEY` is missing or `MOCK_MODE=true`; live-ready with Nosana credentials (`QUEUED_LIVE`).
+
+`executionPlan` aligns to `nosanaExecution` for batch cases (`targetRuntime: Nosana`, `GPU_BATCH_RISK_SCAN`, `batch-risk-scanner:latest`). Credit/KYC and claims workflows keep Nosana `SKIPPED` on the tool chain.
+
 ## Security & governance notes
 
 - **Never commit** `.env`, `.env.local`, or API keys. Use `.env.example` placeholders only.

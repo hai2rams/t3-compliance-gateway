@@ -4,11 +4,15 @@ import type { TokenRouterAgentDecision } from '../agents/tokenRouterAgent.js';
 import type { LlmJudgeResult } from '../agents/llmJudgeAgent.js';
 import type { ExecutionSpec } from '../execution/executionSpec.js';
 import type { RuntimeExecutionResult } from '../execution/executionSpec.js';
-import type { PublicEnrichment, ModelRouting, DaytonaExecution } from '../schemas/agentIntakeSchema.js';
+import type { PublicEnrichment, ModelRouting, DaytonaExecution, NosanaExecution } from '../schemas/agentIntakeSchema.js';
 import {
   daytonaToolReason,
   daytonaToolStatus,
 } from '../services/daytonaExecutionPlanner.js';
+import {
+  nosanaToolReason,
+  nosanaToolStatus,
+} from '../services/nosanaExecutionPlanner.js';
 import {
   brightDataToolReason,
   brightDataToolStatus,
@@ -53,6 +57,7 @@ export type ToolDecisionInput = {
   publicEnrichment?: PublicEnrichment;
   modelRouting?: ModelRouting;
   daytonaExecution?: DaytonaExecution;
+  nosanaExecution?: NosanaExecution;
   kimiStatus?: string;
   senseNovaStatus?: string;
   judge: LlmJudgeResult | { verdict: FinalAgentState; summary: string };
@@ -456,6 +461,15 @@ function resolveDaytona(input: ToolDecisionInput): ToolChainEntry {
 }
 
 function resolveNosana(input: ToolDecisionInput): ToolChainEntry {
+  if (input.nosanaExecution) {
+    return {
+      tool: 'Nosana',
+      role: 'gpu_batch_execution',
+      status: nosanaToolStatus(input.nosanaExecution),
+      reason: nosanaToolReason(input.nosanaExecution),
+    };
+  }
+
   if (input.promptInjectionBlocked || input.intentControlBlocked) {
     return {
       tool: 'Nosana',

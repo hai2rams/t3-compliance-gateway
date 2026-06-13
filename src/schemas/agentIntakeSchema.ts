@@ -204,6 +204,41 @@ export type DaytonaExecution = {
   safetyNotes: string[];
 };
 
+export type NosanaQueueStatus =
+  | 'SKIPPED'
+  | 'BLOCKED'
+  | 'QUEUED_MOCK'
+  | 'QUEUED_LIVE'
+  | 'AWAITING_GOVERNANCE_APPROVAL';
+
+export type NosanaExecution = {
+  provider: 'Nosana';
+  mode: 'LIVE' | 'MOCK';
+  allowedToQueue: boolean;
+  queueStatus: NosanaQueueStatus;
+  jobClass: 'GPU_BATCH_RISK_SCAN';
+  workloadType: 'ANONYMIZED_BATCH_ANALYSIS';
+  containerImage: string;
+  estimatedRecords: number;
+  gpuRequired: boolean;
+  inputPolicy: {
+    rawSensitiveDataAllowed: boolean;
+    anonymizedInputOnly: boolean;
+    externalNetwork: 'DISABLED_BY_DEFAULT' | 'ALLOWED';
+    secretsInjected: boolean;
+  };
+  resourceLimits: {
+    gpu: string;
+    cpu: string;
+    memory: string;
+    timeoutSeconds: number;
+  };
+  plannedCommand: string;
+  artifacts: string[];
+  reason: string;
+  safetyNotes: string[];
+};
+
 export type AgentIntakeResponse = {
   missionId: string;
   agentId: string;
@@ -220,6 +255,7 @@ export type AgentIntakeResponse = {
   llmJudge: Record<string, unknown>;
   executionPlan: Record<string, unknown>;
   daytonaExecution: DaytonaExecution;
+  nosanaExecution: NosanaExecution;
   toolOrchestration: ToolOrchestration;
   t3Governance: T3Governance;
   finalAgentState: FinalAgentState;

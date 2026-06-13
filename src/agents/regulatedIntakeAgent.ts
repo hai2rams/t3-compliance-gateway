@@ -24,7 +24,9 @@ export function runRegulatedIntakeAgent(request: AgentIntakeRequest): IntakeAnal
   const selectedWorkflow = mapWorkflow(inferredIntent);
 
   const amountMatch =
-    content.match(/\b(?:SGD|USD|\$)\s*([\d,]+)/i) ?? content.match(/\b([\d,]+)\b/);
+    inferredIntent === 'BATCH_RISK_SCAN' || hints.hasBatch
+      ? null
+      : content.match(/\b(?:SGD|USD|\$)\s*([\d,]+)/i) ?? content.match(/\b([\d,]+)\b/);
   const amount = amountMatch ? Number(amountMatch[1].replace(/,/g, '')) : 0;
 
   return {
@@ -49,7 +51,14 @@ function detectModalities(
   ) {
     modalities.add('DOCUMENT');
   }
-  if (hints.hasImage || /\b(image|photo|scan|\.png|\.jpg)\b/i.test(content)) {
+  if (hints.hasImage || /\b(image|photo|\.png|\.jpg)\b/i.test(content)) {
+    modalities.add('IMAGE');
+  } else if (
+    /\bscan\b/i.test(content) &&
+    !hints.hasBatch &&
+    !modalities.has('BATCH') &&
+    !/\bbatch\b/i.test(content)
+  ) {
     modalities.add('IMAGE');
   }
   if (hints.hasAudio || /\baudio\b/i.test(content)) {
@@ -97,6 +106,9 @@ function formatDetectedModality(modalities: Modality[], intent: InferredIntent):
   if (intent === 'CREDIT_KYC_PRECHECK') {
     return 'DOCUMENT + TEXT';
   }
+  if (intent === 'BATCH_RISK_SCAN') {
+    return 'BATCH';
+  }
   return modalities.filter((m) => m !== 'MIXED').join(' + ');
 }
 
@@ -105,7 +117,7 @@ function mapWorkflow(intent: InferredIntent): string {
     case 'CREDIT_KYC_PRECHECK':
       return 'CREDIT_KYC_PRECHECK';
     case 'BATCH_RISK_SCAN':
-      return 'BULK_BATCH_JOB';
+      return 'BATCH_RISK_SCAN';
     case 'VIDEO_REVIEW':
       return 'VIDEO_ANALYSIS';
     case 'CLAIMS_REVIEW':
@@ -119,10 +131,22 @@ function mapWorkflow(intent: InferredIntent): string {
   }
 }
 
+function isDeclaredAnonymizedBatch(
+  content: string,
+  hints: NonNullable<AgentIntakeRequest['hints']>,
+): boolean {
+  if (!hints.hasBatch && !/\bbatch\b/i.test(content)) return false;
+  return (
+    /\banonymized\b/i.test(content) &&
+    /\bno\s+(?:names|account|emails?|phone|raw\s+pii)/i.test(content)
+  );
+}
+
 function detectPii(
   content: string,
   hints: NonNullable<AgentIntakeRequest['hints']>,
 ): boolean {
+  if (isDeclaredAnonymizedBatch(content, hints)) return false;
   if (/\b(passport|salary|bank statement|account|ssn|national id)\b/i.test(content)) {
     return true;
   }
@@ -135,7 +159,11 @@ export function buildAgentDataBoundary(content: string): {
   redactedPreview: string;
   privateBlockedFromExternal: boolean;
 } {
-  const base = scanSensitiveData(content, true);
+  const anonymizedBatch =
+    /\banonymized\b/i.test(content) &&
+    /\bno\s+(?:names|account|emails?|phone|raw\s+pii)/i.test(content) &&
+    /\bbatch\b/i.test(content);
+  const base = scanSensitiveData(content, !anonymizedBatch);
   const types = new Set<string>(base.types);
 
   if (/\bsalary\s+slip\b/i.test(content)) types.add('SALARY_DOCUMENT');

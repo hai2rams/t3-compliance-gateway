@@ -36,7 +36,7 @@ export function evaluateFinancePolicy(
 
   if (
     request.workflowType === 'BULK_BATCH_JOB' &&
-    request.actionType === 'BATCH_ANALYSIS' &&
+    (request.actionType === 'BATCH_ANALYSIS' || request.actionType === 'BATCH_RISK_SCAN') &&
     authorizedBatchRole &&
     !request.containsPii &&
     !request.externalSharing &&
